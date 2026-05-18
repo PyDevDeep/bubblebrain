@@ -1,0 +1,59 @@
+[tool.poetry]
+name = "FlowGateAI"
+version = "0.1.0"
+description = "CHATBOT AI BACKEND + FLOWISE CHAT EMBED"
+authors = ["PyDevDeep"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.13"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.32.0"}
+openai = "^1.50.0"
+pinecone = "^5.3.0"
+pydantic-settings = "^2.5.0"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+structlog = "^24.4.0"
+sentry-sdk = {extras = ["fastapi"], version = "^2.14.0"}
+slowapi = "^0.1.9"
+prometheus-client = "^0.21.0"
+httpx = "^0.27.2"
+python-multipart = "^0.0.12"
+pdfplumber = "^0.11.4"
+python-docx = "^1.1.2"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.3"
+pytest-asyncio = "^0.24.0"
+pytest-cov = "^5.0.0"
+ruff = ">=0.9.0"
+mypy = "^1.11.2"
+pre-commit = "^4.0.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+exclude = [".venv", "__pycache__", "logs", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "S", "W", "N", "UP", "C4", "SIM", "RUF", "A", "DTZ", "TID", "ASYNC", "PT"]
+ignore = ["F401", "E501", "B008", "RUF001", "RUF002", "RUF003", "N815", "S107"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S108"]
+"**/tests/*" = ["S101", "S105", "S108"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+exclude = ["^\\.venv/", "^__pycache__/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::ResourceWarning"]
