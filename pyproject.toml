@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "FlowGateAI"
+name = "BubbleBrain"
 version = "0.1.0"
 description = "CHATBOT AI BACKEND + FLOWISE CHAT EMBED"
 authors = ["PyDevDeep"]

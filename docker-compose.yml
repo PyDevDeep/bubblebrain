@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bubblebrain-app
+    env_file:
+      - .env
+    ports:
+      - "8200:8000" # Зовнішній порт 8200 мапиться на внутрішній 8000
+    volumes:
+      - ./app:/app/app
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: bubblebrain-prometheus
+    ports:
+      - "9290:9090" # Зовнішній порт 9290 мапиться на внутрішній 9090
+    restart: unless-stopped
