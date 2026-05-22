@@ -1,8 +1,11 @@
 import asyncio
 from typing import Any, cast
 
-from pinecone import Pinecone, PodSpec, ServerlessSpec  # type: ignore[reportMissingTypeStubs]
-from pinecone.core.client.exceptions import PineconeException  # type: ignore[reportMissingImports]
+from pinecone import (  # type: ignore[reportMissingTypeStubs]
+    Pinecone,
+    PineconeException,
+    ServerlessSpec,
+)
 
 from app.core.config import Settings
 from app.core.logging_config import get_logger
@@ -18,7 +21,7 @@ class VectorService:
         """
         self.settings = settings
         self.pc = Pinecone(api_key=settings.pinecone_api_key.get_secret_value())
-        self.index_name = settings.pinecone_index_name
+        self.index_name = settings.pinecone_index_name.lower()
         self.dimension = 1536
         self.metric = "cosine"
 
@@ -35,11 +38,7 @@ class VectorService:
             if self.index_name not in active_indexes:
                 logger.info("Creating Pinecone index", index_name=self.index_name)
 
-                if self.settings.pinecone_environment == "gcp-starter":
-                    spec = PodSpec(environment=self.settings.pinecone_environment)
-                else:
-                    # Default для сучасних безкоштовних/платних планів
-                    spec = ServerlessSpec(cloud="aws", region="us-east-1")
+                spec = ServerlessSpec(cloud="aws", region="us-east-1")
 
                 self.pc.create_index(  # type: ignore[reportUnknownMemberType]
                     name=self.index_name,
