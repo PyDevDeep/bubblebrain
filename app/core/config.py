@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     top_k_results: int = 3
     max_tokens_response: int = 1024
 
+    root_path: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False
     )
