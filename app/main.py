@@ -5,10 +5,13 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sentry_sdk.integrations.fastapi import FastApiIntegration
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.api.v1.router import api_v1_router
 from app.core.config import get_settings
 from app.core.logging_config import get_logger, setup_logging
+from app.middleware.rate_limiter import limiter
 from app.middleware.request_logging import RequestLoggingMiddleware
 
 logger = get_logger(__name__)
@@ -59,6 +62,10 @@ def create_application() -> FastAPI:
 
     app.add_middleware(RequestLoggingMiddleware)
     app.include_router(api_v1_router, prefix="/api/v1")
+
+    # Конфігурація Rate Limiter
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
 
     return app
 
