@@ -3,7 +3,11 @@ class ChatWidget {
     this._config = {
       apiHost: config.apiHost,
       apiKey: config.apiKey,
-      primaryColor: config.primaryColor || "#3B81F6",
+      colors: {
+        primary: config.colors?.primary || "#4B0082",
+        secondary: config.colors?.secondary || "#6E1893",
+        accent: config.colors?.accent || "#FF2603",
+      },
       welcomeMessage: config.welcomeMessage || "Привіт! Чим можу допомогти?",
       placeholder: config.placeholder || "Введіть повідомлення...",
       title: config.title || "Помічник",
@@ -25,7 +29,6 @@ class ChatWidget {
 
     this._shadow = host.attachShadow({ mode: "open" });
 
-    // Завантажуємо CSS (в prod можна інлайнити)
     const styleLink = document.createElement("link");
     styleLink.rel = "stylesheet";
     styleLink.href = new URL(
@@ -34,11 +37,32 @@ class ChatWidget {
         ? document.currentScript.src
         : window.location.href,
     ).href;
-    this._shadow.appendChild(styleLink);
 
-    // Встановлюємо кастомний колір
+    // Фікс FOUC: Чекаємо завантаження стилів
+    await new Promise((resolve) => {
+      styleLink.onload = resolve;
+      styleLink.onerror = () => {
+        console.error("BubbleBrain: Failed to load chat-widget.css");
+        resolve(); // Fallback, щоб не заблокувати повністю
+      };
+      this._shadow.appendChild(styleLink);
+    });
+
+    // Інжекція нової палітри
     const styleOverride = document.createElement("style");
-    styleOverride.textContent = `:host { --bb-primary: ${this._config.primaryColor}; }`;
+    styleOverride.textContent = `
+            :host {
+                --bb-primary: ${this._config.colors.primary};
+                --bb-secondary: ${this._config.colors.secondary};
+                --bb-accent: ${this._config.colors.accent};
+            }
+            .bubble-button { background: linear-gradient(135deg, var(--bb-primary), var(--bb-secondary)); }
+            .chat-header { background: linear-gradient(135deg, var(--bb-primary), var(--bb-secondary)); }
+            .message.user { background: linear-gradient(135deg, var(--bb-primary), var(--bb-secondary)); }
+            .message.system { color: var(--bb-accent); background: #ffebee; border: 1px solid var(--bb-accent); }
+            .input-row input:focus { border-color: var(--bb-primary); }
+            .input-row button { background: var(--bb-primary); }
+        `;
     this._shadow.appendChild(styleOverride);
 
     this._renderUI();
@@ -47,7 +71,6 @@ class ChatWidget {
 
   _renderUI() {
     const wrapper = document.createElement("div");
-
     const posStyle =
       this._config.position === "bottom-left" ? "left: 24px; right: auto;" : "";
 
@@ -84,7 +107,6 @@ class ChatWidget {
     this._elements.closeBtn.addEventListener("click", () =>
       this.toggleWindow(),
     );
-
     this._elements.sendBtn.addEventListener("click", () => this._handleSend());
     this._elements.input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -99,7 +121,6 @@ class ChatWidget {
     if (this._isOpen) {
       this._elements.window.classList.add("open");
       this._elements.input.focus();
-
       if (!this._hasOpened) {
         this._appendMessage("bot", this._config.welcomeMessage);
         this._hasOpened = true;
@@ -152,10 +173,9 @@ class ChatWidget {
       }
     } catch (error) {
       this._removeTypingIndicator();
-      console.error("Chat Error:", error);
       this._appendMessage(
         "system",
-        error.message || "Сервіс тимчасово недоступний. Спробуйте пізніше.",
+        error.message || "Сервіс тимчасово недоступний.",
       );
     } finally {
       this._elements.sendBtn.disabled = false;
@@ -187,7 +207,7 @@ class ChatWidget {
         if (response.status === 401 || response.status === 403)
           throw new Error("Помилка автентифікації.");
         if (response.status === 429)
-          throw new Error("Забагато запитів. Зачекайте хвилину.");
+          throw new Error("Забагато запитів. Зачекайте.");
         throw new Error(`HTTP ${response.status}`);
       }
 
@@ -195,13 +215,32 @@ class ChatWidget {
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
 
+      // Фікс Layout Thrashing: Батчинг оновлень через rAF
+      let pendingText = "";
+      let isUpdating = false;
+
+      const updateDOM = () => {
+        if (!isUpdating) return;
+        botBubble.textContent += pendingText;
+        pendingText = "";
+        this._elements.messages.scrollTop =
+          this._elements.messages.scrollHeight;
+        isUpdating = false;
+      };
+
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          if (pendingText) {
+            isUpdating = true;
+            updateDOM();
+          }
+          break;
+        }
 
         buffer += decoder.decode(value, { stream: true });
         const chunks = buffer.split("\n\n");
-        buffer = chunks.pop(); // Залишаємо неповний чанк у буфері
+        buffer = chunks.pop();
 
         for (const chunk of chunks) {
           if (chunk.startsWith("data: ")) {
@@ -209,18 +248,20 @@ class ChatWidget {
             if (data === "[DONE]") return;
             if (data.startsWith("[ERROR]")) throw new Error(data.slice(7));
 
-            botBubble.textContent += data;
-            this._elements.messages.scrollTop =
-              this._elements.messages.scrollHeight;
+            pendingText += data;
+            if (!isUpdating) {
+              isUpdating = true;
+              requestAnimationFrame(updateDOM);
+            }
           }
         }
       }
     } catch (error) {
       if (error.name === "AbortError") {
-        throw new Error("Запит зайняв забагато часу. Спробуйте ще раз.");
+        throw new Error("Timeout запиту.");
       }
       if (botBubble.textContent.length > 0) {
-        botBubble.textContent += "\n(Відповідь обірвана)";
+        botBubble.textContent += "\n(Зв'язок розірвано)";
       } else {
         throw error;
       }
@@ -263,5 +304,4 @@ class ChatWidget {
   }
 }
 
-// Експортуємо клас для використання в embed.js
 window.ChatWidget = ChatWidget;

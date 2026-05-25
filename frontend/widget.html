@@ -24,57 +24,27 @@
         margin-top: 0;
         color: #111827;
       }
-      p {
-        line-height: 1.6;
-      }
-      .btn-test {
-        background: #111827;
-        color: white;
-        border: none;
-        padding: 10px 20px;
-        border-radius: 6px;
-        cursor: pointer;
-      }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>BubbleBrain Widget (Vanilla JS)</h1>
-      <p>
-        Ця сторінка імітує сайт клієнта. Віджет завантажується ізольовано через
-        Shadow DOM.
-      </p>
-      <p>
-        Для програмного відкриття вікна (наприклад, з вашої власної кнопки)
-        можна викликати API віджета:
-      </p>
-      <button
-        class="btn-test"
-        onclick="window.ChatWidgetInstance.toggleWindow()"
-      >
-        Відкрити чат програмно
-      </button>
-
-      <br /><br />
-      <p>
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod
-        tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
-        veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea
-        commodo consequat.
-      </p>
+      <h1>BubbleBrain Widget</h1>
+      <p>Ізольований тест з оновленою палітрою та виправленим рендерингом.</p>
     </div>
 
     <script>
       window.ChatWidgetConfig = {
         apiHost: "https://alliases.duckdns.org/BubbleBrain/api/v1",
-        apiKey: "YOUR_SECRET_API_KEY_HERE", // <-- ЗАМІНИТИ ПЕРЕД ТЕСТУВАННЯМ
-        primaryColor: "#059669", // Зелений колір для тесту
+        apiKey: "HsD6kO0jZmfl_gRxUCYYZNlfa0eK_rZKrkws6egES_I",
+        colors: {
+          primary: "#4B0082",
+          secondary: "#6E1893",
+          accent: "#FF2603",
+        },
         title: "BubbleBrain AI",
-        welcomeMessage:
-          "Вітаю! Я інтелектуальний помічник BubbleBrain. Чим можу допомогти?",
+        welcomeMessage: "Вітаю! Систему ініціалізовано. Очікую запит.",
       };
     </script>
-
     <script src="embed.js"></script>
   </body>
 </html>
