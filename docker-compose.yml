@@ -10,6 +10,7 @@ services:
       - "8200:8000" # Зовнішній порт 8200 мапиться на внутрішній 8000
     volumes:
       - ./app:/app/app
+      - ./frontend:/app/frontend
     restart: unless-stopped
 
   prometheus:
