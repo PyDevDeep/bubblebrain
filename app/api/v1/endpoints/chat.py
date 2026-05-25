@@ -75,4 +75,6 @@ async def chat_stream(
         finally:
             yield "data: [DONE]\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"}
+    )

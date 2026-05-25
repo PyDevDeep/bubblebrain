@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BubbleBrain AI Widget Demo</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        background: #f3f4f6;
+        margin: 0;
+        padding: 40px;
+        color: #1f2937;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 30px;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      }
+      h1 {
+        margin-top: 0;
+        color: #111827;
+      }
+      p {
+        line-height: 1.6;
+      }
+      .btn-test {
+        background: #111827;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>BubbleBrain Widget (Vanilla JS)</h1>
+      <p>
+        Ця сторінка імітує сайт клієнта. Віджет завантажується ізольовано через
+        Shadow DOM.
+      </p>
+      <p>
+        Для програмного відкриття вікна (наприклад, з вашої власної кнопки)
+        можна викликати API віджета:
+      </p>
+      <button
+        class="btn-test"
+        onclick="window.ChatWidgetInstance.toggleWindow()"
+      >
+        Відкрити чат програмно
+      </button>
+
+      <br /><br />
+      <p>
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod
+        tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
+        veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea
+        commodo consequat.
+      </p>
+    </div>
+
+    <script>
+      window.ChatWidgetConfig = {
+        apiHost: "https://alliases.duckdns.org/BubbleBrain/api/v1",
+        apiKey: "YOUR_SECRET_API_KEY_HERE", // <-- ЗАМІНИТИ ПЕРЕД ТЕСТУВАННЯМ
+        primaryColor: "#059669", // Зелений колір для тесту
+        title: "BubbleBrain AI",
+        welcomeMessage:
+          "Вітаю! Я інтелектуальний помічник BubbleBrain. Чим можу допомогти?",
+      };
+    </script>
+
+    <script src="embed.js"></script>
+  </body>
+</html>
