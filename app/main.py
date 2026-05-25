@@ -1,9 +1,11 @@
 import contextlib
 from collections.abc import AsyncGenerator
+from pathlib import Path
 
 import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -49,7 +51,6 @@ def create_application() -> FastAPI:
         version="0.1.0",
         description="Backend for Flowise Chat Embed with RAG",
         lifespan=lifespan,
-        root_path="/BubbleBrain",
     )
 
     app.add_middleware(
@@ -66,6 +67,26 @@ def create_application() -> FastAPI:
     # Конфігурація Rate Limiter
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
+
+    # АБСОЛЮТНИЙ ШЛЯХ ДЛЯ СТАТИКИ
+    base_dir = Path(__file__).resolve().parent.parent
+    frontend_dir = base_dir / "frontend"
+
+    # ДІАГНОСТИЧНИЙ ЕНДПОІНТ: Дозволяє побачити, чи дійсно файли змонтовані в контейнер
+    @app.get("/debug-fs")
+    def debug_fs() -> dict[str, str | bool | list[str]]:
+        import os
+
+        files_list: list[str] = os.listdir(str(frontend_dir)) if frontend_dir.exists() else []
+        return {
+            "path": str(frontend_dir),
+            "exists": frontend_dir.exists(),
+            "files": files_list,
+        }
+
+    _ = debug_fs  # Маскування для Pylance (запобігає помилці неактивного коду)
+
+    app.mount("/widget", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
 
     return app
 
