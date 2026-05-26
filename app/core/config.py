@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     top_k_results: int = 3
     max_tokens_response: int = 1024
 
+    cache_ttl_days: int = 7
+    cache_db_path: str = "cache.db"
+
+    woo_ck: str = ""
+    woo_cs: str = ""
+    euro_rate: float = 52.0  # Зможемо оновлювати динамічно пізніше
+
     root_path: str = ""
 
     model_config = SettingsConfigDict(

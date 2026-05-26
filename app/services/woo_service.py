@@ -1,0 +1,56 @@
+import httpx
+
+from app.core.config import Settings
+from app.core.logging_config import get_logger
+from app.schemas.scraper import WooProduct
+
+logger = get_logger(__name__)
+
+
+class WooService:
+    def __init__(self, settings: Settings) -> None:
+        self.woo_ck = settings.woo_ck
+        self.woo_cs = settings.woo_cs
+        self.base_url = "https://digitaldreams.com.ua/wp-json/wc/v3/products"
+
+    async def search_product_async(self, search_term: str) -> WooProduct | None:
+        """Асинхронний пошук товару у WooCommerce за назвою або SKU."""
+        params: dict[str, str | int] = {
+            "search": search_term,
+            "consumer_key": self.woo_ck,
+            "consumer_secret": self.woo_cs,
+            "per_page": 1,
+        }
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                resp = await client.get(self.base_url, params=params)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if data and len(data) > 0 and data[0].get("price"):
+                        return WooProduct(
+                            sku=data[0].get("sku", ""),
+                            name=data[0].get("name", ""),
+                            price_uah=float(data[0]["price"]),
+                            url=data[0].get("permalink", ""),
+                        )
+
+                # Fallback пошук по SKU (якщо назва не дала результату)
+                params_sku: dict[str, str | int] = params.copy()
+                params_sku.pop("search", None)
+                params_sku["sku"] = search_term
+
+                resp_sku = await client.get(self.base_url, params=params_sku)
+                if resp_sku.status_code == 200:
+                    data_sku = resp_sku.json()
+                    if data_sku and len(data_sku) > 0 and data_sku[0].get("price"):
+                        return WooProduct(
+                            sku=data_sku[0].get("sku", ""),
+                            name=data_sku[0].get("name", ""),
+                            price_uah=float(data_sku[0]["price"]),
+                            url=data_sku[0].get("permalink", ""),
+                        )
+            except httpx.RequestError as e:
+                logger.error("WooCommerce API Error", error=str(e), search_term=search_term)
+
+        return None
