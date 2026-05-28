@@ -178,11 +178,11 @@ class RAGEngine:
             [f"{'Клієнт' if m['role'] == 'user' else 'Ти'}: {m['content']}" for m in history]
         )
 
-        # 1. Pinecone FAQ Search (шукаємо з урахуванням історії!)
-        search_query = f"{history_context}\nКлієнт: {question}" if history_context else question
-        context_chunks, _, _ = await self._retrieve_context(search_query)
+        # ВИПРАВЛЕНО: Шукаємо в Pinecone тільки за поточним запитом, щоб не "розмивати" вектор історією.
+        # Історія потрібна лише для LLM (класифікатора намірів та фінальної генерації).
+        context_chunks, _, _ = await self._retrieve_context(question)
 
-        # 2. Agentic Intent Detection
+        # 2. Agentic Intent Detection (LLM бачить історію і зрозуміє контекст)
         intent_data = await self.detect_intent(question, history_context)
 
         system_instructions: list[str] = []

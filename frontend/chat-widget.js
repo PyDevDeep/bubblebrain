@@ -19,9 +19,21 @@ class ChatWidget {
     this._hasOpened = false;
     this._typingIndicator = null;
 
+    // ДОДАНО: Генерація унікальної сесії для пам'яті бота
+    this._sessionId = this._generateSessionId();
+
     this._initDOM();
   }
-
+  // ДОДАНО: Метод генерації ID
+  _generateSessionId() {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return (
+      Math.random().toString(36).substring(2, 15) +
+      Math.random().toString(36).substring(2, 15)
+    );
+  }
   async _initDOM() {
     const host = document.createElement("div");
     host.id = "chat-widget-host";
@@ -197,7 +209,7 @@ class ChatWidget {
           "X-API-Key": this._config.apiKey,
           Accept: "text/event-stream",
         },
-        body: JSON.stringify({ question: text }),
+        body: JSON.stringify({ question: text, session_id: this._sessionId }),
         signal: controller.signal,
       });
 
@@ -279,7 +291,8 @@ class ChatWidget {
           "Content-Type": "application/json",
           "X-API-Key": this._config.apiKey,
         },
-        body: JSON.stringify({ question: text }),
+        // ДОДАНО: Передача session_id на бекенд
+        body: JSON.stringify({ question: text, session_id: this._sessionId }),
         signal: controller.signal,
       });
 
