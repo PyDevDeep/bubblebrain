@@ -66,7 +66,7 @@ async def chat_completion(
 
 
 @chat_router.post("/stream")
-@limiter.limit("20/minute")  # type: ignore
+@limiter.limit("20/minute")  # type: ignore[reportUntypedFunctionDecorator, reportUnknownMemberType]
 async def chat_stream(
     request: Request,
     chat_request: ChatRequest,
@@ -76,11 +76,12 @@ async def chat_stream(
     """
     Streaming (SSE) ендпоінт чату. Повертає токени по мірі їх генерації моделлю.
     """
-    logger.info("Stream chat request received", session_id=chat_request.session_id)
+    session_id = chat_request.session_id or str(uuid.uuid4())
+    logger.info("Stream chat request received", session_id=session_id)
 
     async def event_generator() -> AsyncGenerator[str]:
         try:
-            async for token in rag_engine.process_query_stream(chat_request.question):
+            async for token in rag_engine.process_query_stream(chat_request.question, session_id):
                 # Формат SSE згідно з вимогами Flowise/Roadmap
                 yield f"data: {token}\n\n"
         except Exception as e:
