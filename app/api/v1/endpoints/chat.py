@@ -9,9 +9,14 @@ from app.core.logging_config import get_logger
 from app.core.security import verify_api_key
 from app.middleware.rate_limiter import limiter
 from app.schemas.chat import ChatRequest, ChatResponse
+from app.services.cache_service import CacheService
 from app.services.openai_service import OpenAIService
+from app.services.price_comparator import PriceComparator
 from app.services.rag_engine import RAGEngine
+from app.services.scraper_service import ScraperService
+from app.services.telegram_service import TelegramService
 from app.services.vector_service import VectorService
+from app.services.woo_service import WooService
 
 logger = get_logger(__name__)
 chat_router = APIRouter()
@@ -20,9 +25,18 @@ chat_router = APIRouter()
 def get_rag_engine(settings: Settings = Depends(get_settings)) -> RAGEngine:
     openai_service = OpenAIService(settings)
     vector_service = VectorService(settings)
+
+    woo_service = WooService(settings)
+    scraper_service = ScraperService(settings)
+    cache_service = CacheService(settings)
+    price_comparator = PriceComparator(woo_service, scraper_service, cache_service)
+    telegram_service = TelegramService(settings)
+
     return RAGEngine(
         openai_service=openai_service,
         vector_service=vector_service,
+        price_comparator=price_comparator,
+        telegram_service=telegram_service,
         settings=settings,
     )
 

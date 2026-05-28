@@ -22,91 +22,81 @@ class PriceComparator:
         self.cache_service = cache_service
         self.margin_threshold = 200.0
 
+    def _map_availability(self, dc_status: str) -> str:
+        s = dc_status.lower() if dc_status else ""
+        if "ihneď" in s or "skladom" in s:
+            return "В наявності (відправка 3-5 днів)"
+        elif "objednávku" in s:
+            return "Під замовлення (доставка 14-20 днів)"
+        return "Уточнюється у постачальника"
+
     async def compare(self, product_name: str) -> PriceComparisonResult:
         logger.info("Starting price comparison", product=product_name)
 
-        # 1. Шукаємо товар у нас на сайті
         woo_result = await self.woo_service.search_product_async(product_name)
-
         if not woo_result:
-            logger.info("Product not found in WooCommerce", product=product_name)
             return PriceComparisonResult(
                 product_name=product_name,
                 woo_price=None,
                 datacomp_price_uah=None,
-                hotline_price_uah=None,
-                diff_hotline_uah=None,
-                diff_woo_uah=None,
-                datacomp_url=None,
-                hotline_url=None,
+                needs_alert=False,
             )
 
-        sku = woo_result.sku
-        if not sku:
-            sku = woo_result.name.replace(" ", "_").lower()
-            logger.warning("Woo product has no SKU, using name as cache key", name=woo_result.name)
-
-        # 2. Перевіряємо SQLite кеш
+        sku = woo_result.sku or woo_result.name.replace(" ", "_").lower()
         dc_price_uah = None
-        dc_availability = "Невідомо"
+        dc_availability_raw = ""
         dc_url = None
 
         cache_entry = await self.cache_service.get(sku)
-
         if cache_entry and not cache_entry.is_expired(self.cache_service.ttl_days):
             logger.info("Cache HIT", sku=sku)
             dc_price_uah = cache_entry.price_uah
-            dc_availability = cache_entry.availability_status
+            dc_availability_raw = cache_entry.availability_status
         else:
             logger.info("Cache MISS or EXPIRED", sku=sku)
-            # 3. Кеш пустий -> скрапимо Datacomp
             dc_result = await self.scraper_service.scrape_datacomp(sku)
-
             if not dc_result and sku != product_name:
                 dc_result = await self.scraper_service.scrape_datacomp(product_name)
 
             if dc_result:
                 dc_price_uah = dc_result.price_uah
-                dc_availability = dc_result.availability_status
+                dc_availability_raw = dc_result.availability_status
                 dc_url = dc_result.url
 
-                # Записуємо свіжі дані в кеш
                 if dc_price_uah:
                     new_entry = CacheEntry(
                         sku=sku,
                         product_name=woo_result.name,
                         price_eur=dc_result.price_eur or 0.0,
                         price_uah=dc_price_uah,
-                        availability_status=dc_availability,
+                        availability_status=dc_availability_raw,
                         delivery_time_description="Авто",
                         updated_at=datetime.now(UTC),
                     )
                     await self.cache_service.set(new_entry)
-            else:
-                logger.warning("Scraper returned None", sku=sku)
 
-        # 4. Обчислюємо маржу
+        mapped_availability = self._map_availability(dc_availability_raw)
         diff_woo = None
+        needs_alert = False
+        alert_reason = None
 
         if woo_result.price_uah and dc_price_uah:
             diff_woo = round(woo_result.price_uah - dc_price_uah, 2)
-
-            # Алгоритм: якщо різниця менша 200 грн або мінусова -> тривога
             if diff_woo < self.margin_threshold:
-                logger.warning("Low margin detected", sku=sku, margin=diff_woo)
-                # Інвалідуємо кеш, бо можливо ціна стрибнула і треба перевірити наступного разу
-                await self.cache_service.invalidate(sku)
-
-        # (Hotline скрапінг тут можна викликати фоново або асинхронно, але для швидкості поки пропускаємо,
-        # оскільки він потрібен лише для аналітики, а не для відповіді клієнту).
+                needs_alert = True
+                alert_reason = "low_margin"
+                await self.cache_service.invalidate(sku)  # Інвалідуємо кеш при аномаліях
+        elif woo_result.price_uah and not dc_price_uah:
+            needs_alert = True
+            alert_reason = "scraper_failed"
 
         return PriceComparisonResult(
             product_name=woo_result.name,
             woo_price=woo_result.price_uah,
             datacomp_price_uah=dc_price_uah,
-            hotline_price_uah=None,  # Заглушка для швидкодії
-            diff_hotline_uah=None,
+            availability_status=mapped_availability,
             diff_woo_uah=diff_woo,
+            needs_alert=needs_alert,
+            alert_reason=alert_reason,
             datacomp_url=dc_url,
-            hotline_url=None,
         )

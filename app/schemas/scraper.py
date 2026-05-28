@@ -26,8 +26,10 @@ class PriceComparisonResult(BaseModel):
     product_name: str
     woo_price: float | None
     datacomp_price_uah: float | None
-    hotline_price_uah: float | None
-    diff_hotline_uah: float | None
-    diff_woo_uah: float | None
-    datacomp_url: str | None
-    hotline_url: str | None
+    hotline_price_uah: float | None = None
+    availability_status: str | None = None
+    diff_woo_uah: float | None = None
+    needs_alert: bool = False
+    alert_reason: str | None = None
+    datacomp_url: str | None = None
+    hotline_url: str | None = None

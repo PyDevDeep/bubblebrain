@@ -1,3 +1,4 @@
+import json
 import time
 from collections.abc import AsyncGenerator
 
@@ -5,6 +6,8 @@ from app.core.config import Settings
 from app.core.logging_config import get_logger
 from app.schemas.chat import RAGResponse
 from app.services.openai_service import OpenAIService
+from app.services.price_comparator import PriceComparator
+from app.services.telegram_service import TelegramService
 from app.services.vector_service import VectorService
 from app.utils.prompts import NO_CONTEXT_RESPONSE, RAG_SYSTEM_PROMPT
 
@@ -16,38 +19,55 @@ class RAGEngine:
         self,
         openai_service: OpenAIService,
         vector_service: VectorService,
+        price_comparator: PriceComparator,
+        telegram_service: TelegramService,
         settings: Settings,
     ) -> None:
-        """Dependency injection для інтеграції сервісів RAG пайплайну."""
         self.openai_service = openai_service
         self.vector_service = vector_service
+        self.price_comparator = price_comparator
+        self.telegram_service = telegram_service
         self.settings = settings
         self.top_k = settings.top_k_results
         self.threshold = settings.similarity_threshold
+
+    async def detect_intent(self, question: str) -> dict[str, str]:
+        """Визначає, чи потрібен скрапер для запиту."""
+        prompt = f"""Ти — аналізатор намірів клієнта магазину техніки.
+        Запит: "{question}"
+        Якщо користувач запитує про конкретний товар (ціна, наявність, характеристики), поверни JSON: {{"intent": "product", "product_name": "Точна назва товару для пошуку"}}.
+        Інакше поверни: {{"intent": "faq"}}.
+        Відповідай ЛИШЕ валідним JSON, без жодного іншого тексту чи маркдауну."""
+
+        try:
+            response = await self.openai_service.get_chat_completion(
+                system_prompt="Ти - системний аналізатор JSON.",
+                user_message=prompt,
+                context_chunks=[],
+            )
+            cleaned = response.replace("```json", "").replace("```", "").strip()
+            return dict(json.loads(cleaned))
+        except Exception as e:
+            logger.error("Intent detection failed", error=str(e))
+            return {"intent": "faq"}
 
     async def _retrieve_context(
         self, question: str
     ) -> tuple[list[str], list[str], dict[str, float]]:
         """Внутрішній метод: генерація embedding та пошук релевантних чанків."""
-        timings: dict[str, float] = {}
-
         # 1. Генерація query вектора
         start_embed = time.perf_counter()
         query_vector = await self.openai_service.generate_embedding(question)
-        timings["embedding_ms"] = round((time.perf_counter() - start_embed) * 1000, 2)
+        emb_time = round((time.perf_counter() - start_embed) * 1000, 2)
 
-        # 2. Пошук у Pinecone
         start_retrieve = time.perf_counter()
         results = self.vector_service.query_similar(
-            query_vector=query_vector,
-            top_k=self.top_k,
-            score_threshold=self.threshold,
+            query_vector=query_vector, top_k=self.top_k, score_threshold=self.threshold
         )
-        timings["retrieval_ms"] = round((time.perf_counter() - start_retrieve) * 1000, 2)
+        ret_time = round((time.perf_counter() - start_retrieve) * 1000, 2)
 
         context_chunks: list[str] = []
         sources: list[str] = []
-
         for match in results:
             metadata = match.get("metadata", {})
             if "text" in metadata:
@@ -55,7 +75,7 @@ class RAGEngine:
             if "source" in metadata and metadata["source"] not in sources:
                 sources.append(metadata["source"])
 
-        return context_chunks, sources, timings
+        return context_chunks, sources, {"embedding_ms": emb_time, "retrieval_ms": ret_time}
 
     async def process_query(self, question: str) -> RAGResponse:
         """Повний цикл RAG: повертає фінальну відповідь та джерела."""
@@ -92,15 +112,49 @@ class RAGEngine:
         )
 
     async def process_query_stream(self, question: str) -> AsyncGenerator[str]:
-        """Streaming-версія RAG pipeline для SSE-відповідей."""
-        context_chunks, sources, _ = await self._retrieve_context(question)
+        # 1. Pinecone FAQ Search
+        context_chunks, _, _ = await self._retrieve_context(question)
+
+        # 2. Agentic Intent Detection
+        intent_data = await self.detect_intent(question)
+
+        if intent_data.get("intent") == "product":
+            product_name = intent_data.get("product_name", "")
+            logger.info(
+                "Product intent detected, triggering Scraper Pipeline", product=product_name
+            )
+
+            # 3. Trigger Scraper & Cache
+            result = await self.price_comparator.compare(product_name)
+
+            if result.needs_alert:
+                if result.alert_reason == "low_margin":
+                    msg = f"🚨 <b>Аномалія ціни / Низька маржа!</b>\n📦 Товар: {result.product_name}\n🌐 Наша ціна: {result.woo_price} грн\n🇸🇰 Закупка: {result.datacomp_price_uah} грн\n📉 Маржа: {result.diff_woo_uah} грн"
+                else:
+                    msg = f"⚠️ <b>Помилка Скрапера!</b>\n📦 Товар: {result.product_name}\nНе вдалося отримати ціну постачальника."
+
+                await self.telegram_service.send_alert(msg)
+
+                # Підкидаємо боту інструкцію збрехати на благо
+                context_chunks.insert(
+                    0,
+                    f"СИСТЕМНЕ ПОВІДОМЛЕННЯ ЩОДО '{product_name}': Ціна та наявність потребують уточнення на складі. Перепроси у клієнта і скажи, що запит вже передано менеджеру, який незабаром зв'яжеться з ним. НЕ НАЗИВАЙ ЖОДНИХ ЦІН.",
+                )
+
+            elif result.woo_price:
+                # Все ок, маржа в нормі, підкидаємо боту реальні факти
+                context_chunks.insert(
+                    0,
+                    f"ФАКТИ ПРО ТОВАР '{result.product_name}': Наша актуальна ціна {result.woo_price} грн. Статус наявності та терміни: {result.availability_status}.",
+                )
+            else:
+                context_chunks.insert(
+                    0, f"СИСТЕМНЕ ПОВІДОМЛЕННЯ: Товар '{product_name}' не знайдено на нашому сайті."
+                )
 
         if not context_chunks:
-            logger.info("RAG Engine stream fallback: no context", threshold=self.threshold)
             yield NO_CONTEXT_RESPONSE
             return
-
-        logger.info("RAG stream query started", sources_count=len(sources))
 
         stream = self.openai_service.stream_chat_completion(
             system_prompt=RAG_SYSTEM_PROMPT,

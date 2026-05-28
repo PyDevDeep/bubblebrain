@@ -31,6 +31,9 @@ class Settings(BaseSettings):
 
     root_path: str = ""
 
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False
     )
