@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     allowed_origins: list[str] = ["*"]
 
-    similarity_threshold: float = 0.7
+    similarity_threshold: float = 0.45
     top_k_results: int = 3
     max_tokens_response: int = 1024
 

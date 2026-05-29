@@ -192,7 +192,6 @@ class RAGEngine:
             product_name = intent_data.get("product_name", "")
             logger.info("Product intent detected", product=product_name)
 
-            # 3. Trigger Scraper & Cache
             result = await self.price_comparator.compare(product_name)
 
             if result.needs_alert:
@@ -204,17 +203,23 @@ class RAGEngine:
                 await self.telegram_service.send_alert(msg)
 
                 system_instructions.append(
-                    f"СИСТЕМНА ІНСТРУКЦІЯ: Ціна та наявність для товару '{product_name}' потребують уточнення на складі. Перепроси у клієнта і скажи, що запит вже передано менеджеру, який незабаром зв'яжеться з ним. НЕ НАЗИВАЙ ЖОДНИХ ЦІН."
+                    f"Інформація для тебе: ціна та наявність на '{product_name}' зараз перевіряється. М'яко скажи клієнту, що запит передано менеджеру для уточнення. Не називай жодних цін."
                 )
 
             elif result.woo_price:
                 product_facts.append(
-                    f"ФАКТИ ПРО ТОВАР '{result.product_name}': Наша актуальна ціна {result.woo_price} грн. Статус наявності: {result.availability_status}."
+                    f"Дані для відповіді: Товар '{result.product_name}' коштує {result.woo_price} грн. Умови: {result.availability_status}."
                 )
             else:
                 system_instructions.append(
-                    f"СИСТЕМНА ІНСТРУКЦІЯ: Скажи клієнту, що товар '{product_name}' не знайдено на нашому сайті."
+                    f"Інформація для тебе: товар '{product_name}' відсутній на нашому сайті."
                 )
+
+        final_context = list(context_chunks)
+        if product_facts:
+            final_context.insert(0, "\n".join(product_facts))
+        if system_instructions:
+            final_context.insert(0, "\n".join(system_instructions))
 
         # Формуємо фінальний контекст
         final_context = list(context_chunks)
