@@ -35,14 +35,19 @@ class RAGEngine:
 
     async def detect_intent(self, question: str, history_context: str) -> dict[str, str]:
         """Визначає, чи потрібен скрапер для запиту, враховуючи історію."""
-        prompt = f"""Ти — аналізатор намірів клієнта магазину техніки.
-        Історія останніх повідомлень:
+        prompt = f"""Ти — суворий аналізатор намірів клієнта магазину техніки.
+        Історія розмови:
         {history_context if history_context else "Немає"}
 
         Поточний запит: "{question}"
-        Зважаючи на історію, якщо користувач запитує про конкретний товар (ціна, наявність, характеристики) АБО продовжує про нього говорити (наприклад, "а коли він буде?", "яка його ціна?"), поверни JSON: {{"intent": "product", "product_name": "Точна назва товару для пошуку"}}.
-        Інакше поверни: {{"intent": "faq"}}.
-        Відповідай ЛИШЕ валідним JSON, без жодного іншого тексту."""
+
+        ПРАВИЛА:
+        1. Якщо клієнт явно вказує КОНКРЕТНУ назву, бренд або артикул моделі (наприклад "Sony Playstation", "Acer CZ342CUR", "iPhone 15"), поверни JSON: {{"intent": "product", "product_name": "Точна назва моделі"}}.
+        2. Якщо клієнт запитує про загальну категорію без вказівки бренду/моделі (наприклад: "монітор", "ноутбук", "який є в наявності", "товар"), НЕ вважай це назвою продукту! Поверни {{"intent": "faq"}}.
+        3. Якщо клієнт використовує займенники ("цей", "він", "яка ціна") - подивись в Історію. Якщо там БУЛА згадана конкретна модель, поверни її в "product_name". Якщо ні - {{"intent": "faq"}}.
+        4. Запити про доставку, оплату, гарантію або просто привітання ("хелоу", "привіт") -> {{"intent": "faq"}}.
+
+        Відповідай ЛИШЕ валідним JSON, без жодного іншого тексту чи маркдауну."""
 
         try:
             response = await self.openai_service.get_chat_completion(
@@ -59,7 +64,6 @@ class RAGEngine:
     async def _retrieve_context(
         self, search_query: str
     ) -> tuple[list[str], list[str], dict[str, float]]:
-        # Генерація query вектора
         start_embed = time.perf_counter()
         query_vector = await self.openai_service.generate_embedding(search_query)
         emb_time = round((time.perf_counter() - start_embed) * 1000, 2)
@@ -82,13 +86,13 @@ class RAGEngine:
         return context_chunks, sources, {"embedding_ms": emb_time, "retrieval_ms": ret_time}
 
     async def process_query(self, question: str, session_id: str = "default") -> RAGResponse:
-        """Повний цикл RAG (з підтримкою пам'яті та агентів): повертає фінальну відповідь та джерела."""
+        """Повний цикл RAG для синхронних запитів."""
         start_total = time.perf_counter()
 
         if session_id not in _chat_memory:
             _chat_memory[session_id] = []
 
-        history = _chat_memory[session_id][-4:]
+        history = _chat_memory[session_id][-6:]
         history_context = "\n".join(
             [
                 f"{'Клієнт' if m.get('role') == 'user' else 'Ти'}: {m.get('content', '')}"
@@ -117,17 +121,16 @@ class RAGEngine:
                         msg = f"⚠️ <b>Помилка Скрапера!</b>\n📦 Товар: {result.product_name}\nНе вдалося отримати ціну постачальника."
 
                     await self.telegram_service.send_alert(msg)
-
                     system_instructions.append(
-                        f"СИСТЕМНА ІНСТРУКЦІЯ: Ціна та наявність для товару '{product_name}' потребують уточнення на складі. Перепроси у клієнта і скажи, що запит вже передано менеджеру, який незабаром зв'яжеться з ним. НЕ НАЗИВАЙ ЖОДНИХ ЦІН."
+                        f"Інформація для тебе: ціна та наявність на '{product_name}' зараз перевіряється. М'яко скажи клієнту, що запит передано менеджеру для уточнення. Не називай жодних цін."
                     )
                 elif result.woo_price:
                     product_facts.append(
-                        f"ФАКТИ ПРО ТОВАР '{result.product_name}': Наша актуальна ціна {result.woo_price} грн. Статус наявності: {result.availability_status}."
+                        f"Дані для відповіді: Товар '{result.product_name}' коштує {result.woo_price} грн. Умови: {result.availability_status}. Якщо клієнт питає про характеристики, ввічливо повідом, що всі детальні характеристики можна переглянути на сторінці товару на нашому сайті."
                     )
                 else:
                     system_instructions.append(
-                        f"СИСТЕМНА ІНСТРУКЦІЯ: Скажи клієнту, що товар '{product_name}' не знайдено на нашому сайті."
+                        f"Інформація для тебе: товар '{product_name}' відсутній на нашому сайті."
                     )
 
         final_context = list(context_chunks)
@@ -170,19 +173,18 @@ class RAGEngine:
     async def process_query_stream(
         self, question: str, session_id: str = "default"
     ) -> AsyncGenerator[str]:
-        # Управління пам'яттю
+        """Повний цикл RAG для стрімінгових запитів (SSE)."""
         if session_id not in _chat_memory:
             _chat_memory[session_id] = []
-        history = _chat_memory[session_id][-4:]  # Останні 4 повідомлення
+
+        history = _chat_memory[session_id][-6:]
         history_context = "\n".join(
             [f"{'Клієнт' if m['role'] == 'user' else 'Ти'}: {m['content']}" for m in history]
         )
 
-        # ВИПРАВЛЕНО: Шукаємо в Pinecone тільки за поточним запитом, щоб не "розмивати" вектор історією.
-        # Історія потрібна лише для LLM (класифікатора намірів та фінальної генерації).
-        context_chunks, _, _ = await self._retrieve_context(question)
+        search_query = f"{history_context}\nКлієнт: {question}" if history_context else question
+        context_chunks, _, _ = await self._retrieve_context(search_query)
 
-        # 2. Agentic Intent Detection (LLM бачить історію і зрозуміє контекст)
         intent_data = await self.detect_intent(question, history_context)
 
         system_instructions: list[str] = []
@@ -208,7 +210,7 @@ class RAGEngine:
 
             elif result.woo_price:
                 product_facts.append(
-                    f"Дані для відповіді: Товар '{result.product_name}' коштує {result.woo_price} грн. Умови: {result.availability_status}."
+                    f"Дані для відповіді: Товар '{result.product_name}' коштує {result.woo_price} грн. Умови: {result.availability_status}. Якщо клієнт питає про характеристики, ввічливо повідом, що всі детальні характеристики можна переглянути на сторінці товару на нашому сайті."
                 )
             else:
                 system_instructions.append(
@@ -221,14 +223,6 @@ class RAGEngine:
         if system_instructions:
             final_context.insert(0, "\n".join(system_instructions))
 
-        # Формуємо фінальний контекст
-        final_context = list(context_chunks)
-        if product_facts:
-            final_context.insert(0, "\n".join(product_facts))
-        if system_instructions:
-            final_context.insert(0, "\n".join(system_instructions))
-
-        # ПРОКИДАЄМО ІСТОРІЮ В LLM
         extended_user_message = f"""
 [ІСТОРІЯ ЧАТУ]
 {history_context if history_context else "Це перше повідомлення."}
@@ -236,7 +230,8 @@ class RAGEngine:
 [ПОТОЧНИЙ ЗАПИТ КЛІЄНТА]
 {question}
 """
-        # Запускаємо LLM
+        _chat_memory[session_id].append({"role": "user", "content": question})
+
         stream = self.openai_service.stream_chat_completion(
             system_prompt=RAG_SYSTEM_PROMPT,
             user_message=extended_user_message.strip(),
@@ -244,10 +239,9 @@ class RAGEngine:
         )
 
         full_response = ""
-        async for token in stream:
-            full_response += token
-            yield token
-
-        # Зберігаємо відповідь в пам'ять
-        _chat_memory[session_id].append({"role": "user", "content": question})
-        _chat_memory[session_id].append({"role": "bot", "content": full_response})
+        try:
+            async for token in stream:
+                full_response += token
+                yield token
+        finally:
+            _chat_memory[session_id].append({"role": "bot", "content": full_response})
