@@ -6,6 +6,7 @@ class WooProduct(BaseModel):
     name: str
     price_uah: float | None
     url: str
+    stock_status: str | None = "instock"
 
 
 class DatacompProduct(BaseModel):

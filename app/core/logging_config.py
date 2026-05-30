@@ -1,5 +1,6 @@
 import logging
 import sys
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -8,11 +9,10 @@ import structlog
 def setup_logging(log_level: str) -> None:
     """
     Конфiгурацiя structlog процесорiв та формату виводу.
-    Перенаправляє стандартний logging (включаючи uvicorn) у structlog.
+    Перенаправляє стандартний logging (включаючи uvicorn) у structlog та файл.
     """
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
 
-    # Процесори, які застосовуються як до structlog, так і до стандартних логів
     shared_processors: list[Any] = [
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -21,7 +21,6 @@ def setup_logging(log_level: str) -> None:
         structlog.processors.format_exc_info,
     ]
 
-    # Конфігурація самого structlog
     structlog.configure(
         processors=[
             structlog.stdlib.filter_by_level,
@@ -36,10 +35,9 @@ def setup_logging(log_level: str) -> None:
         cache_logger_on_first_use=True,
     )
 
-    # Форматтер для перехоплення стандартного логування Python
     formatter_processors: list[Any] = [
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-        structlog.processors.JSONRenderer(),
+        structlog.processors.JSONRenderer(),  # Можна змінити на ConsoleRenderer для читабельності
     ]
 
     formatter = structlog.stdlib.ProcessorFormatter(
@@ -47,16 +45,21 @@ def setup_logging(log_level: str) -> None:
         processors=formatter_processors,
     )
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(formatter)
+    # Вивід в консоль (Docker logs)
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
 
-    # Перевизначаємо root logger
+    # Вивід у файл (app.log на хості)
+    log_file_path = Path(__file__).resolve().parent.parent / "app.log"
+    file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
-    root_logger.addHandler(handler)
+    root_logger.addHandler(stream_handler)
+    root_logger.addHandler(file_handler)
     root_logger.setLevel(numeric_level)
 
-    # Примусово змушуємо uvicorn використовувати наш root logger
     for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         uvicorn_logger = logging.getLogger(logger_name)
         uvicorn_logger.handlers.clear()
@@ -64,7 +67,4 @@ def setup_logging(log_level: str) -> None:
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
-    """
-    Фабрика для отримання bound logger з можливістю додавання контексту.
-    """
     return structlog.stdlib.get_logger(name)

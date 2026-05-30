@@ -33,9 +33,9 @@ class WooService:
                             name=data[0].get("name", ""),
                             price_uah=float(data[0]["price"]),
                             url=data[0].get("permalink", ""),
+                            stock_status=data[0].get("stock_status", "instock"),
                         )
 
-                # Fallback пошук по SKU (якщо назва не дала результату)
                 params_sku: dict[str, str | int] = params.copy()
                 params_sku.pop("search", None)
                 params_sku["sku"] = search_term
@@ -49,6 +49,7 @@ class WooService:
                             name=data_sku[0].get("name", ""),
                             price_uah=float(data_sku[0]["price"]),
                             url=data_sku[0].get("permalink", ""),
+                            stock_status=data_sku[0].get("stock_status", "instock"),
                         )
             except httpx.RequestError as e:
                 logger.error("WooCommerce API Error", error=str(e), search_term=search_term)

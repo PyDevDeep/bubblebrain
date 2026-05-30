@@ -75,18 +75,32 @@ class PriceComparator:
                     )
                     await self.cache_service.set(new_entry)
 
+        # Отримуємо статус на нашому складі
+        woo_stock = getattr(woo_result, "stock_status", "instock")
+
+        # Визначаємо базовий термін доставки по постачальнику
         mapped_availability = self._map_availability(dc_availability_raw)
+
         diff_woo = None
         needs_alert = False
         alert_reason = None
 
         if woo_result.price_uah and dc_price_uah:
             diff_woo = round(woo_result.price_uah - dc_price_uah, 2)
+
             if diff_woo < self.margin_threshold:
+                # Маржа погана - б'ємо на сполох
                 needs_alert = True
                 alert_reason = "low_margin"
-                await self.cache_service.invalidate(sku)  # Інвалідуємо кеш при аномаліях
+                await self.cache_service.invalidate(sku)
+            else:
+                # Маржа ДОБРА. Перевіряємо статус
+                if woo_stock == "outofstock":
+                    # Нашого товару немає, але у постачальника є! Форсуємо статус "Під замовлення"
+                    mapped_availability = "Під замовлення з Європи (доставка 14-20 днів)"
+
         elif woo_result.price_uah and not dc_price_uah:
+            # На сайті ціна є, а Datacomp не знайшов взагалі - помилка
             needs_alert = True
             alert_reason = "scraper_failed"
 
