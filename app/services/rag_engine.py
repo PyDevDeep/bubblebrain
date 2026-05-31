@@ -34,7 +34,6 @@ class RAGEngine:
         self.threshold = settings.similarity_threshold
 
     async def detect_intent(self, question: str, history_context: str) -> dict[str, str]:
-        """Визначає, чи потрібен скрапер для запиту, враховуючи історію."""
         prompt = f"""Ти — суворий аналізатор намірів клієнта магазину техніки.
         Історія розмови:
         {history_context if history_context else "Немає"}
