@@ -41,10 +41,11 @@ class RAGEngine:
         Поточний запит: "{question}"
 
         ПРАВИЛА:
-        1. Якщо клієнт явно вказує КОНКРЕТНУ назву, бренд або артикул моделі (наприклад "Sony Playstation", "Acer CZ342CUR", "iPhone 15"), поверни JSON: {{"intent": "product", "product_name": "Точна назва моделі"}}.
-        2. Якщо клієнт запитує про загальну категорію без вказівки бренду/моделі (наприклад: "монітор", "ноутбук", "який є в наявності", "товар"), НЕ вважай це назвою продукту! Поверни {{"intent": "faq"}}.
-        3. Якщо клієнт використовує займенники ("цей", "він", "яка ціна") - подивись в Історію. Якщо там БУЛА згадана конкретна модель, поверни її в "product_name". Якщо ні - {{"intent": "faq"}}.
-        4. Запити про доставку, оплату, гарантію або просто привітання ("хелоу", "привіт") -> {{"intent": "faq"}}.
+        1. Якщо клієнт явно вказує КОНКРЕТНУ назву або модель товару (наприклад "Sony Playstation", "Acer CZ342CUR"), поверни JSON: {{"intent": "product", "product_name": "Точна назва моделі"}}.
+        2. КРИТИЧНО: При витягуванні "product_name" відкидай ВСЕ кириличне сміття (наприклад "об'ємом 4 ТБ", "чорний", "купити"). Залишай ТІЛЬКИ базову англійську назву бренду та моделі (наприклад "Crucial T705 4TB" або просто "Crucial T705").
+        3. Якщо клієнт запитує про загальну категорію без вказівки бренду/моделі ("монітор", "товар") - поверни {{"intent": "faq"}}.
+        4. Якщо клієнт використовує займенники ("цей", "він", "яка ціна") - знайди конкретну модель в Історії (очищену від кирилиці) і поверни її в "product_name". Якщо моделі немає - {{"intent": "faq"}}.
+        5. Запити про доставку, оплату, гарантію -> {{"intent": "faq"}}.
 
         Відповідай ЛИШЕ валідним JSON, без жодного іншого тексту чи маркдауну."""
 
@@ -99,7 +100,7 @@ class RAGEngine:
             ]
         )
 
-        search_query = f"{history_context}\nКлієнт: {question}" if history_context else question
+        search_query = question
         context_chunks, sources, timings = await self._retrieve_context(search_query)
 
         intent_data = await self.detect_intent(question, history_context)
@@ -181,7 +182,7 @@ class RAGEngine:
             [f"{'Клієнт' if m['role'] == 'user' else 'Ти'}: {m['content']}" for m in history]
         )
 
-        search_query = f"{history_context}\nКлієнт: {question}" if history_context else question
+        search_query = question
         context_chunks, _, _ = await self._retrieve_context(search_query)
 
         intent_data = await self.detect_intent(question, history_context)
