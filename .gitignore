@@ -27,3 +27,4 @@ htmlcov/
 logs/*
 !logs/.gitkeep
 .claude/
+app/app.log
