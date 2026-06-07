@@ -55,3 +55,39 @@ class WooService:
                 logger.error("WooCommerce API Error", error=str(e), search_term=search_term)
 
         return None
+
+    async def search_products_async(self, search_term: str, limit: int = 5) -> list[WooProduct]:
+        """Асинхронний пошук кількох товарів у WooCommerce за назвою."""
+        params: dict[str, str | int] = {
+            "search": search_term,
+            "consumer_key": self.woo_ck,
+            "consumer_secret": self.woo_cs,
+            "per_page": limit,
+        }
+
+        products: list[WooProduct] = []
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                resp = await client.get(self.base_url, params=params)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, list):
+                        for item in data:
+                            if item.get("price"):
+                                products.append(
+                                    WooProduct(
+                                        sku=item.get("sku", ""),
+                                        name=item.get("name", ""),
+                                        price_uah=float(item["price"]),
+                                        url=item.get("permalink", ""),
+                                        stock_status=item.get("stock_status", "instock"),
+                                    )
+                                )
+            except httpx.RequestError as e:
+                logger.error(
+                    "WooCommerce API Multi Search Error",
+                    error=str(e),
+                    search_term=search_term,
+                )
+
+        return products

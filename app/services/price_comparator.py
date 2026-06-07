@@ -35,6 +35,18 @@ class PriceComparator:
 
         woo_result = await self.woo_service.search_product_async(product_name)
         if not woo_result:
+            # Спробуємо знайти у постачальника (Datacomp), якщо немає в нашому магазині
+            dc_result = await self.scraper_service.scrape_datacomp(product_name)
+            if dc_result:
+                mapped_availability = self._map_availability(dc_result.availability_status)
+                return PriceComparisonResult(
+                    product_name=dc_result.name,
+                    woo_price=None,
+                    datacomp_price_uah=dc_result.price_uah,
+                    availability_status=mapped_availability,
+                    needs_alert=False,
+                    datacomp_url=dc_result.url,
+                )
             return PriceComparisonResult(
                 product_name=product_name,
                 woo_price=None,

@@ -43,9 +43,10 @@ class RAGEngine:
         ПРАВИЛА:
         1. Якщо клієнт явно вказує КОНКРЕТНУ назву або модель товару (наприклад "Sony Playstation", "Acer CZ342CUR"), поверни JSON: {{"intent": "product", "product_name": "Точна назва моделі"}}.
         2. КРИТИЧНО: При витягуванні "product_name" відкидай ВСЕ кириличне сміття (наприклад "об'ємом 4 ТБ", "чорний", "купити"). Залишай ТІЛЬКИ базову англійську назву бренду та моделі (наприклад "Crucial T705 4TB" або просто "Crucial T705").
-        3. Якщо клієнт запитує про загальну категорію без вказівки бренду/моделі ("монітор", "товар") - поверни {{"intent": "faq"}}.
-        4. Якщо клієнт використовує займенники ("цей", "він", "яка ціна") - знайди конкретну модель в Історії (очищену від кирилиці) і поверни її в "product_name". Якщо моделі немає - {{"intent": "faq"}}.
-        5. Запити про доставку, оплату, гарантію -> {{"intent": "faq"}}.
+        3. Якщо клієнт шукає або цікавиться наявністю групи товарів, категорії, бренду чи характеристик (наприклад "ссд на 4 тб", "ігрові монітори", "мишка razer", "ssd 4tb", "що порадите з відеокарт"), поверни JSON: {{"intent": "search", "search_query": "Очищений пошуковий запит англійською або транслітом, наприклад 'ssd 4tb' чи 'razer mouse'"}}.
+        4. Якщо клієнт запитує про загальну категорію без вказівки характеристик/брендів ("монітор", "товар", "каталог") - поверни {{"intent": "faq"}}.
+        5. Якщо клієнт використовує займенники ("цей", "він", "яка ціна") - знайди конкретну модель в Історії (очищену від кирилиці) і поверни її в "product_name". Якщо моделі немає - {{"intent": "faq"}}.
+        6. Запити про доставку, оплату, гарантію -> {{"intent": "faq"}}.
 
         Відповідай ЛИШЕ валідним JSON, без жодного іншого тексту чи маркдауну."""
 
@@ -85,26 +86,7 @@ class RAGEngine:
 
         return context_chunks, sources, {"embedding_ms": emb_time, "retrieval_ms": ret_time}
 
-    async def process_query(self, question: str, session_id: str = "default") -> RAGResponse:
-        """Повний цикл RAG для синхронних запитів."""
-        start_total = time.perf_counter()
-
-        if session_id not in _chat_memory:
-            _chat_memory[session_id] = []
-
-        history = _chat_memory[session_id][-6:]
-        history_context = "\n".join(
-            [
-                f"{'Клієнт' if m.get('role') == 'user' else 'Ти'}: {m.get('content', '')}"
-                for m in history
-            ]
-        )
-
-        search_query = question
-        context_chunks, sources, timings = await self._retrieve_context(search_query)
-
-        intent_data = await self.detect_intent(question, history_context)
-
+    async def _get_intent_context(self, intent_data: dict[str, str]) -> tuple[list[str], list[str]]:
         system_instructions: list[str] = []
         product_facts: list[str] = []
 
@@ -128,10 +110,76 @@ class RAGEngine:
                     product_facts.append(
                         f"Дані для відповіді: Товар '{result.product_name}' коштує {result.woo_price} грн. Умови: {result.availability_status}. Якщо клієнт питає про характеристики, ввічливо повідом, що всі детальні характеристики можна переглянути на сторінці товару на нашому сайті."
                     )
+                elif result.datacomp_price_uah:
+                    product_facts.append(
+                        f"Дані для відповіді: Товар '{result.product_name}' відсутній на нашому складі, але ми можемо замовити його для вас у постачальника з Європи. Орієнтовна ціна: {result.datacomp_price_uah} грн. Умови доставки: {result.availability_status}. Посилання для ознайомлення: {result.datacomp_url}"
+                    )
                 else:
                     system_instructions.append(
-                        f"Інформація для тебе: товар '{product_name}' відсутній на нашому сайті."
+                        f"Інформація для тебе: товар '{product_name}' відсутній на нашому сайті та у постачальників."
                     )
+
+        elif intent_data.get("intent") == "search":
+            search_query = str(intent_data.get("search_query", ""))
+            if search_query:
+                logger.info("Search intent detected", query=search_query)
+                woo_products = await self.woo_service.search_products_async(search_query, limit=3)
+                dc_products = await self.scraper_service.scrape_datacomp_multi(
+                    search_query, limit=3
+                )
+
+                search_facts: list[str] = []
+                if woo_products:
+                    search_facts.append("Знайдено у нашому магазині (Digital Dreams):")
+                    for p in woo_products:
+                        status = (
+                            "В наявності" if p.stock_status == "instock" else "Немає в наявності"
+                        )
+                        search_facts.append(
+                            f"- {p.name}: ціна {p.price_uah} грн, статус: {status}, посилання: {p.url}"
+                        )
+
+                if dc_products:
+                    search_facts.append("Знайдено у постачальника (можна замовити під клієнта):")
+                    for p in dc_products:
+                        availability = self.price_comparator._map_availability(
+                            p.availability_status
+                        )
+                        price_desc = f"{p.price_uah} грн" if p.price_uah else "ціна уточнюється"
+                        search_facts.append(
+                            f"- {p.name}: орієнтовна ціна {price_desc}, умови доставки: {availability}, посилання: {p.url}"
+                        )
+
+                if search_facts:
+                    product_facts.append("\n".join(search_facts))
+                else:
+                    system_instructions.append(
+                        f"Інформація для тебе: за запитом '{search_query}' товарів не знайдено ні в нашому магазині, ні у постачальників. Запропонуй менеджеру зв'язатися для підбору."
+                    )
+
+        return product_facts, system_instructions
+
+    async def process_query(self, question: str, session_id: str = "default") -> RAGResponse:
+        """Повний цикл RAG для синхронних запитів."""
+        start_total = time.perf_counter()
+
+        if session_id not in _chat_memory:
+            _chat_memory[session_id] = []
+
+        history = _chat_memory[session_id][-6:]
+        history_context = "\n".join(
+            [
+                f"{'Клієнт' if m.get('role') == 'user' else 'Ти'}: {m.get('content', '')}"
+                for m in history
+            ]
+        )
+
+        search_query = question
+        context_chunks, sources, timings = await self._retrieve_context(search_query)
+
+        intent_data = await self.detect_intent(question, history_context)
+
+        product_facts, system_instructions = await self._get_intent_context(intent_data)
 
         final_context = list(context_chunks)
         if product_facts:
@@ -187,35 +235,7 @@ class RAGEngine:
 
         intent_data = await self.detect_intent(question, history_context)
 
-        system_instructions: list[str] = []
-        product_facts: list[str] = []
-
-        if intent_data.get("intent") == "product":
-            product_name = intent_data.get("product_name", "")
-            logger.info("Product intent detected", product=product_name)
-
-            result = await self.price_comparator.compare(product_name)
-
-            if result.needs_alert:
-                if result.alert_reason == "low_margin":
-                    msg = f"🚨 <b>Аномалія ціни / Низька маржа!</b>\n📦 Товар: {result.product_name}\n🌐 Наша ціна: {result.woo_price} грн\n🇸🇰 Закупка: {result.datacomp_price_uah} грн\n📉 Маржа: {result.diff_woo_uah} грн"
-                else:
-                    msg = f"⚠️ <b>Помилка Скрапера!</b>\n📦 Товар: {result.product_name}\nНе вдалося отримати ціну постачальника."
-
-                await self.telegram_service.send_alert(msg)
-
-                system_instructions.append(
-                    f"Інформація для тебе: ціна та наявність на '{product_name}' зараз перевіряється. М'яко скажи клієнту, що запит передано менеджеру для уточнення. Не називай жодних цін."
-                )
-
-            elif result.woo_price:
-                product_facts.append(
-                    f"Дані для відповіді: Товар '{result.product_name}' коштує {result.woo_price} грн. Умови: {result.availability_status}. Якщо клієнт питає про характеристики, ввічливо повідом, що всі детальні характеристики можна переглянути на сторінці товару на нашому сайті."
-                )
-            else:
-                system_instructions.append(
-                    f"Інформація для тебе: товар '{product_name}' відсутній на нашому сайті."
-                )
+        product_facts, system_instructions = await self._get_intent_context(intent_data)
 
         final_context = list(context_chunks)
         if product_facts:
