@@ -73,14 +73,14 @@ class WooService:
                     data = resp.json()
                     if isinstance(data, list):
                         for item in data:
-                            if item.get("price"):
+                            if isinstance(item, dict) and item.get("price"):
                                 products.append(
                                     WooProduct(
-                                        sku=item.get("sku", ""),
-                                        name=item.get("name", ""),
-                                        price_uah=float(item["price"]),
-                                        url=item.get("permalink", ""),
-                                        stock_status=item.get("stock_status", "instock"),
+                                        sku=str(item.get("sku") or ""),
+                                        name=str(item.get("name") or ""),
+                                        price_uah=float(item.get("price") or 0.0),
+                                        url=str(item.get("permalink") or ""),
+                                        stock_status=str(item.get("stock_status") or "instock"),
                                     )
                                 )
             except httpx.RequestError as e:
