@@ -74,19 +74,17 @@ class WooService:
                 if resp.status_code == 200:
                     data = resp.json()
                     if isinstance(data, list):
-                        for raw_item in data:
-                            if isinstance(raw_item, dict):
-                                item = cast(dict[str, Any], raw_item)
-                                if item.get("price"):
-                                    products.append(
-                                        WooProduct(
-                                            sku=str(item.get("sku") or ""),
-                                            name=str(item.get("name") or ""),
-                                            price_uah=float(item.get("price") or 0.0),
-                                            url=str(item.get("permalink") or ""),
-                                            stock_status=str(item.get("stock_status") or "instock"),
-                                        )
+                        for raw_item in cast(list[dict[str, Any]], data):
+                            if raw_item.get("price"):
+                                products.append(
+                                    WooProduct(
+                                        sku=str(raw_item.get("sku") or ""),
+                                        name=str(raw_item.get("name") or ""),
+                                        price_uah=float(raw_item.get("price") or 0.0),
+                                        url=str(raw_item.get("permalink") or ""),
+                                        stock_status=str(raw_item.get("stock_status") or "instock"),
                                     )
+                                )
             except httpx.RequestError as e:
                 logger.error(
                     "WooCommerce API Multi Search Error",
