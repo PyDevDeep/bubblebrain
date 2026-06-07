@@ -123,8 +123,10 @@ class RAGEngine:
             search_query = str(intent_data.get("search_query", ""))
             if search_query:
                 logger.info("Search intent detected", query=search_query)
-                woo_products = await self.woo_service.search_products_async(search_query, limit=3)
-                dc_products = await self.scraper_service.scrape_datacomp_multi(
+                woo_products = await self.price_comparator.woo_service.search_products_async(
+                    search_query, limit=3
+                )
+                dc_products = await self.price_comparator.scraper_service.scrape_datacomp_multi(
                     search_query, limit=3
                 )
 
@@ -142,9 +144,7 @@ class RAGEngine:
                 if dc_products:
                     search_facts.append("Знайдено у постачальника (можна замовити під клієнта):")
                     for p in dc_products:
-                        availability = self.price_comparator._map_availability(
-                            p.availability_status
-                        )
+                        availability = self.price_comparator.map_availability(p.availability_status)
                         price_desc = f"{p.price_uah} грн" if p.price_uah else "ціна уточнюється"
                         search_facts.append(
                             f"- {p.name}: орієнтовна ціна {price_desc}, умови доставки: {availability}, посилання: {p.url}"

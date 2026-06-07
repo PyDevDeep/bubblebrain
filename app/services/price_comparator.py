@@ -22,7 +22,7 @@ class PriceComparator:
         self.cache_service = cache_service
         self.margin_threshold = 200.0
 
-    def _map_availability(self, dc_status: str) -> str:
+    def map_availability(self, dc_status: str) -> str:
         s = dc_status.lower() if dc_status else ""
         if "ihneď" in s or "skladom" in s:
             return "В наявності (відправка 3-5 днів)"
@@ -38,7 +38,7 @@ class PriceComparator:
             # Спробуємо знайти у постачальника (Datacomp), якщо немає в нашому магазині
             dc_result = await self.scraper_service.scrape_datacomp(product_name)
             if dc_result:
-                mapped_availability = self._map_availability(dc_result.availability_status)
+                mapped_availability = self.map_availability(dc_result.availability_status)
                 return PriceComparisonResult(
                     product_name=dc_result.name,
                     woo_price=None,
@@ -91,7 +91,7 @@ class PriceComparator:
         woo_stock = getattr(woo_result, "stock_status", "instock")
 
         # Визначаємо базовий термін доставки по постачальнику
-        mapped_availability = self._map_availability(dc_availability_raw)
+        mapped_availability = self.map_availability(dc_availability_raw)
 
         diff_woo = None
         needs_alert = False
