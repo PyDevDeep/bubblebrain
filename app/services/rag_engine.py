@@ -33,22 +33,26 @@ class RAGEngine:
         self.top_k = settings.top_k_results
         self.threshold = settings.similarity_threshold
 
-    async def detect_intent(self, question: str, history_context: str) -> dict[str, str]:
+    async def detect_intent(self, question: str, history_context: str) -> dict[str, str | None]:
         prompt = f"""Ти — суворий аналізатор намірів клієнта магазину техніки.
-        Історія розмови:
-        {history_context if history_context else "Немає"}
+Історія розмови:
+{history_context if history_context else "Немає"}
 
-        Поточний запит: "{question}"
+Поточний запит: "{question}"
 
-        ПРАВИЛА:
-        1. Якщо клієнт явно вказує КОНКРЕТНУ назву або модель товару (наприклад "Sony Playstation", "Acer CZ342CUR"), поверни JSON: {{"intent": "product", "product_name": "Точна назва моделі"}}.
-        2. КРИТИЧНО: При витягуванні "product_name" відкидай ВСЕ кириличне сміття (наприклад "об'ємом 4 ТБ", "чорний", "купити"). Залишай ТІЛЬКИ базову англійську назву бренду та моделі (наприклад "Crucial T705 4TB" або просто "Crucial T705").
-        3. Якщо клієнт шукає або цікавиться наявністю групи товарів, категорії, бренду чи характеристик (наприклад "ссд на 4 тб", "ігрові монітори", "мишка razer", "ssd 4tb", "що порадите з відеокарт"), поверни JSON: {{"intent": "search", "search_query": "Очищений пошуковий запит англійською або транслітом, наприклад 'ssd 4tb' чи 'razer mouse'"}}.
-        4. Якщо клієнт запитує про загальну категорію без вказівки характеристик/брендів ("монітор", "товар", "каталог") - поверни {{"intent": "faq"}}.
-        5. Якщо клієнт використовує займенники ("цей", "він", "яка ціна") - знайди конкретну модель в Історії (очищену від кирилиці) і поверни її в "product_name". Якщо моделі немає - {{"intent": "faq"}}.
-        6. Запити про доставку, оплату, гарантію -> {{"intent": "faq"}}.
+Твоє завдання — повернути JSON з полями: "intent", "product_name", "search_term", "normalized_faq_query".
 
-        Відповідай ЛИШЕ валідним JSON, без жодного іншого тексту чи маркдауну."""
+ПРАВИЛА:
+1. Якщо клієнт вказує КОНКРЕТНУ назву моделі (наприклад "Acer CZ342CUR"):
+   -> {{"intent": "product", "product_name": "Точна назва", "search_term": null, "normalized_faq_query": null}}
+2. КРИТИЧНО: Якщо клієнт задає цінові рамки ("15000-20000"), просить кілька товарів ("3-4 монітори") або вказує загальну категорію:
+   -> {{"intent": "search", "product_name": null, "search_term": "чистий запит без цифр кількості (наприклад 'монітор')", "normalized_faq_query": null}}
+3. Якщо клієнт явно висловлює бажання КУПИТИ або ОФОРМИТИ ЗАМОВЛЕННЯ (наприклад: "беру", "оформляй", "куди писати дані"):
+   -> {{"intent": "checkout", "product_name": "ЗНАЙДЕНА_НАЗВА_З_ІСТОРІЇ", "search_term": null, "normalized_faq_query": null}}
+4. Запити про доставку, оплату або питання до конкретного товару:
+   -> {{"intent": "hybrid" або "faq", "product_name": "назва з історії", "search_term": null, "normalized_faq_query": "перекладений запит"}}
+
+Відповідай ЛИШЕ валідним JSON."""
 
         try:
             response = await self.openai_service.get_chat_completion(
@@ -60,7 +64,7 @@ class RAGEngine:
             return dict(json.loads(cleaned))
         except Exception as e:
             logger.error("Intent detection failed", error=str(e))
-            return {"intent": "faq"}
+            return {"intent": "faq", "normalized_faq_query": question}
 
     async def _retrieve_context(
         self, search_query: str
@@ -86,7 +90,9 @@ class RAGEngine:
 
         return context_chunks, sources, {"embedding_ms": emb_time, "retrieval_ms": ret_time}
 
-    async def _get_intent_context(self, intent_data: dict[str, str]) -> tuple[list[str], list[str]]:
+    async def _get_intent_context(
+        self, intent_data: dict[str, str | None]
+    ) -> tuple[list[str], list[str]]:
         system_instructions: list[str] = []
         product_facts: list[str] = []
 
@@ -221,7 +227,6 @@ class RAGEngine:
     async def process_query_stream(
         self, question: str, session_id: str = "default"
     ) -> AsyncGenerator[str]:
-        """Повний цикл RAG для стрімінгових запитів (SSE)."""
         if session_id not in _chat_memory:
             _chat_memory[session_id] = []
 
@@ -230,12 +235,71 @@ class RAGEngine:
             [f"{'Клієнт' if m['role'] == 'user' else 'Ти'}: {m['content']}" for m in history]
         )
 
-        search_query = question
-        context_chunks, _, _ = await self._retrieve_context(search_query)
-
         intent_data = await self.detect_intent(question, history_context)
+        intent_type = intent_data.get("intent", "faq")
+        product_name = intent_data.get("product_name")
+        normalized_query = intent_data.get("normalized_faq_query")
 
-        product_facts, system_instructions = await self._get_intent_context(intent_data)
+        context_chunks: list[str] = []
+        system_instructions: list[str] = []
+        product_facts: list[str] = []
+
+        # 1. PINECONE (FAQ)
+        if intent_type in ["faq", "hybrid"] and normalized_query:
+            context_chunks, _, _ = await self._retrieve_context(normalized_query)
+
+        # 2. СКРАПЕР КОНКРЕТНОГО ТОВАРУ
+        if intent_type in ["product", "hybrid"] and product_name:
+            result = await self.price_comparator.compare(product_name)
+
+            if result.needs_alert:
+                msg = f"⚠️ <b>Проблема Скрапера/Маржі!</b>\n📦 Товар: {result.product_name}"
+                await self.telegram_service.send_alert(msg)
+                system_instructions.append(
+                    f"Інформація для тебе: ціна та наявність на '{product_name}' перевіряється менеджером. Не називай ціну."
+                )
+            elif result.woo_price:
+                url_text = f" Посилання на товар: {result.woo_url}" if result.woo_url else ""
+                product_facts.append(
+                    f"Дані для відповіді: Товар '{result.product_name}' коштує {result.woo_price} грн. Умови: {result.availability_status}.{url_text}\n"
+                    f"КРИТИЧНО: Оскільки точний статус доставки зараз відомий, ігноруй загальні правила Pinecone. Якщо товар 'В наявності', називай термін доставки ТІЛЬКИ 1-3 дні. Якщо 'Під замовлення', називай ТІЛЬКИ 14-20 днів."
+                )
+            else:
+                system_instructions.append(
+                    f"Інформація для тебе: товар '{product_name}' відсутній на нашому сайті."
+                )
+
+        # 3. КАТЕГОРІЙНИЙ ПОШУК ТА РЕКОМЕНДАЦІЇ
+        if intent_type == "search" and intent_data.get("search_query"):
+            search_term = str(intent_data.get("search_query"))
+            # ВИПРАВЛЕНО НАЗВУ МЕТОДУ НА search_products_async
+            products = await self.price_comparator.woo_service.search_products_async(
+                search_term, limit=3
+            )
+
+            if products:
+                prod_list = [
+                    f"- {p.name} (ціна: {p.price_uah} грн, посилання: {p.url})" for p in products
+                ]
+                product_facts.append(
+                    f"Дані для відповіді: За запитом '{search_term}' знайдено такі варіанти:\n"
+                    + "\n".join(prod_list)
+                    + "\n\nПряма вказівка: Запропонуй ці варіанти з посиланнями та цінами."
+                )
+            else:
+                system_instructions.append(
+                    f"Інформація для тебе: За запитом '{search_term}' нічого не знайдено."
+                )
+
+        # 4. ОФОРМЛЕННЯ ЗАМОВЛЕННЯ (CHECKOUT)
+        if intent_type == "checkout" and product_name:
+            result = await self.price_comparator.compare(product_name)
+            woo_url = result.woo_url if result and result.woo_url else "нашому сайті"
+            system_instructions.append(
+                f"Клієнт хоче оформити замовлення на '{product_name}'. ТВОЯ ЗАДАЧА — дати клієнту 2 варіанти:\n"
+                f"1. Оформити самостійно: надай посилання {woo_url}\n"
+                f"2. Оформити прямо в чаті: попроси написати ПІБ, телефон, місто, номер відділення Нової Пошти та спосіб оплати."
+            )
 
         final_context = list(context_chunks)
         if product_facts:
@@ -243,13 +307,7 @@ class RAGEngine:
         if system_instructions:
             final_context.insert(0, "\n".join(system_instructions))
 
-        extended_user_message = f"""
-[ІСТОРІЯ ЧАТУ]
-{history_context if history_context else "Це перше повідомлення."}
-
-[ПОТОЧНИЙ ЗАПИТ КЛІЄНТА]
-{question}
-"""
+        extended_user_message = f"[ІСТОРІЯ ЧАТУ]\n{history_context if history_context else 'Це перше повідомлення.'}\n\n[ПОТОЧНИЙ ЗАПИТ КЛІЄНТА]\n{question}"
         _chat_memory[session_id].append({"role": "user", "content": question})
 
         stream = self.openai_service.stream_chat_completion(

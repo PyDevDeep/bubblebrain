@@ -34,3 +34,4 @@ class PriceComparisonResult(BaseModel):
     alert_reason: str | None = None
     datacomp_url: str | None = None
     hotline_url: str | None = None
+    woo_url: str | None = None

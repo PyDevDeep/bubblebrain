@@ -27,7 +27,7 @@ class PriceComparator:
         if "ihneď" in s or "skladom" in s:
             return "В наявності (відправка 3-5 днів)"
         elif "objednávku" in s:
-            return "Під замовлення (доставка 14-20 днів)"
+            return "Під замовлення від постачальника (доставка 14-20 днів)"
         return "Уточнюється у постачальника"
 
     async def compare(self, product_name: str) -> PriceComparisonResult:
@@ -101,15 +101,13 @@ class PriceComparator:
             diff_woo = round(woo_result.price_uah - dc_price_uah, 2)
 
             if diff_woo < self.margin_threshold:
-                # Маржа погана - б'ємо на сполох
                 needs_alert = True
                 alert_reason = "low_margin"
                 await self.cache_service.invalidate(sku)
             else:
-                # Маржа ДОБРА. Перевіряємо статус
                 if woo_stock == "outofstock":
                     # Нашого товару немає, але у постачальника є! Форсуємо статус "Під замовлення"
-                    mapped_availability = "Під замовлення з Європи (доставка 14-20 днів)"
+                    mapped_availability = "Під замовлення від постачальника (доставка 14-20 днів)"
 
         elif woo_result.price_uah and not dc_price_uah:
             # На сайті ціна є, а Datacomp не знайшов взагалі - помилка
@@ -125,4 +123,5 @@ class PriceComparator:
             needs_alert=needs_alert,
             alert_reason=alert_reason,
             datacomp_url=dc_url,
+            woo_url=woo_result.url,
         )
