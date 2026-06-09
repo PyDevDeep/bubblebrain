@@ -104,41 +104,69 @@ class RAGEngine:
 
         intent_type = intent_data.get("intent", "faq")
         product_name = intent_data.get("product_name")
-        if not product_name and intent_type == "product":
+        if not product_name and intent_type in ["product", "checkout"]:
             for msg in reversed(history):
                 if msg["role"] == "bot" and "Товар" in msg["content"]:
-                    pass
+                    pass  # Логіка витягнення назви, якщо потрібно
 
-        # 1. СКРАПЕР КОНКРЕТНОГО ТОВАРУ
-        if intent_type in ["product", "hybrid"] and product_name:
+        # 1. ОБРОБКА КОНКРЕТНОГО ТОВАРУ (Consultation & Checkout)
+        if intent_type in ["product", "hybrid", "checkout"] and product_name:
+            is_checkout = intent_type == "checkout"
             product_name_str = str(product_name)
-            logger.info("Product intent detected", product=product_name_str)
-            result = await self.price_comparator.compare(product_name_str)
+            logger.info(
+                "Product/Checkout intent detected",
+                product=product_name_str,
+                is_checkout=is_checkout,
+            )
+
+            # Виклик з ігноруванням кешу, якщо це чекаут
+            result = await self.price_comparator.compare(product_name_str, is_checkout=is_checkout)
 
             if result.needs_alert:
-                if result.alert_reason == "low_margin":
-                    requires_lead = True
-                    msg = f"🚨 <b>Аномалія ціни / Низька маржа!</b>\n📦 Товар: {result.product_name}\n🌐 Наша ціна: {result.woo_price} грн\n🇸🇰 Закупка: {result.datacomp_price_uah} грн\n📉 Маржа: {result.diff_woo_uah} грн"
-                    system_instructions.append(
-                        "Інструкція: Для цього товару доступна індивідуальна знижка. Запропонуй клієнту передати номер телефону (Viber/Telegram), щоб менеджер узгодив з ним фінальну ціну."
-                    )
+                requires_lead = True
+                if result.alert_reason in ["low_margin", "checkout_margin_issue"]:
+                    msg = f"🚨 <b>Аномалія ціни / Зміна маржі!</b>\n📦 Товар: {result.product_name}\n🌐 Наша ціна: {result.woo_price} грн\n🇸🇰 Закупка: {result.datacomp_price_uah} грн\n📉 Маржа: {result.diff_woo_uah} грн"
+                    await self.telegram_service.send_alert(msg)
+
+                    if is_checkout:
+                        # Твоя логіка збереження клієнта без зміни ціни
+                        system_instructions.append(
+                            "Інструкція: Ти щойно актуалізував дані на складі для фіналізації замовлення і виникла необхідність додаткового узгодження деталей постачання. Ввічливо скажи клієнту, що для завершення оформлення потрібне уточнення менеджера, і попроси залишити номер телефону (Telegram/Viber)."
+                        )
+                    else:
+                        system_instructions.append(
+                            "Інструкція: Для цього товару доступна індивідуальна знижка. Запропонуй клієнту передати номер телефону (Viber/Telegram), щоб менеджер узгодив з ним фінальну ціну."
+                        )
                 else:
                     msg = f"⚠️ <b>Помилка Скрапера!</b>\n📦 Товар: {result.product_name}\nНе вдалося отримати ціну."
+                    await self.telegram_service.send_alert(msg)
                     system_instructions.append(
-                        f"Інформація для тебе: ціна на '{product_name_str}' зараз перевіряється. Скажи клієнту, що запит передано менеджеру."
+                        f"Інформація для тебе: ціна на '{product_name_str}' зараз перевіряється. Скажи клієнту, що запит передано менеджеру і попроси контакти."
                     )
-                await self.telegram_service.send_alert(msg)
-            elif result.woo_price:
+
+            # Якщо все добре і це оформлення замовлення
+            elif is_checkout:
+                requires_lead = True
                 if result.woo_url:
-                    extracted_links.append(
-                        {"text": f"Переглянути {result.product_name}", "url": result.woo_url}
-                    )
-                product_facts.append(
-                    f"Дані: Товар '{result.product_name}', {result.woo_price} грн. Умови: {result.availability_status}.\n"
-                    f"КРИТИЧНО: Якщо товар 'В наявності' - 1-3 дні. 'Під замовлення' - 14-20 днів. ПОСИЛАННЯ В ТЕКСТ НЕ ПИСАТИ!"
+                    extracted_links.append({"text": "Оформити замовлення", "url": result.woo_url})
+                system_instructions.append(
+                    f"Клієнт хоче купити '{product_name_str}'. ТВОЯ ЗАДАЧА:\n"
+                    f"Скажи, що він може оформити замовлення самостійно (кнопка вже згенерована) АБО просто залишити номер телефону тут, і менеджер все оформить сам."
                 )
+
+            # Якщо все добре і це просто консультація
             else:
-                system_instructions.append(f"Інформація: товар '{product_name_str}' відсутній.")
+                if result.woo_price:
+                    if result.woo_url:
+                        extracted_links.append(
+                            {"text": f"Переглянути {result.product_name}", "url": result.woo_url}
+                        )
+                    product_facts.append(
+                        f"Дані: Товар '{result.product_name}', {result.woo_price} грн. Умови: {result.availability_status}.\n"
+                        f"КРИТИЧНО: Якщо товар 'В наявності' - 1-3 дні. 'Під замовлення' - 14-20 днів. ПОСИЛАННЯ В ТЕКСТ НЕ ПИСАТИ!"
+                    )
+                else:
+                    system_instructions.append(f"Інформація: товар '{product_name_str}' відсутній.")
 
         # 2. КАТЕГОРІЙНИЙ ПОШУК
         elif intent_type == "search":
@@ -168,18 +196,6 @@ class RAGEngine:
                     system_instructions.append(
                         f"Інформація: за запитом '{search_term}' нічого не знайдено. Запропонуй клієнту залишити номер телефону, щоб менеджер підібрав аналог."
                     )
-
-        # 3. CHECKOUT
-        if intent_type == "checkout" and product_name:
-            requires_lead = True
-            product_name_str = str(product_name)
-            result = await self.price_comparator.compare(product_name_str)
-            if result and result.woo_url:
-                extracted_links.append({"text": "Оформити замовлення", "url": result.woo_url})
-            system_instructions.append(
-                f"Клієнт хоче купити '{product_name_str}'. ТВОЯ ЗАДАЧА:\n"
-                f"Скажи, що він може оформити замовлення самостійно (кнопка вже згенерована) АБО просто залишити номер телефону тут, і менеджер все оформить сам."
-            )
 
         return product_facts, system_instructions, extracted_links, requires_lead
 

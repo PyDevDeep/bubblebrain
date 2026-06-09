@@ -32,14 +32,12 @@ class PriceComparator:
             return "Під замовлення від постачальника (доставка 14-20 днів)"
         return "Уточнюється у постачальника"
 
-    async def compare(self, product_name: str) -> PriceComparisonResult:
-        logger.info("Starting price comparison", product=product_name)
+    async def compare(self, product_name: str, is_checkout: bool = False) -> PriceComparisonResult:
+        logger.info("Starting price comparison", product=product_name, is_checkout=is_checkout)
 
-        # 1. Завжди спочатку перевіряємо наш магазин (WooCommerce)
         woo_result = await self.woo_service.search_product_async(product_name)
 
         if not woo_result:
-            # Якщо товару взагалі немає на сайті, ми не гадаємо, а просто кажемо, що його немає.
             return PriceComparisonResult(
                 product_name=product_name,
                 woo_price=None,
@@ -50,7 +48,6 @@ class PriceComparator:
         sku = woo_result.sku
         woo_stock = getattr(woo_result, "stock_status", "instock")
 
-        # 2. Якщо товар в наявності у нас - ВІДРАЗУ ВІДДАЄМО, НІЯКОГО DATACOMP
         if woo_stock == "instock":
             logger.info("Product is instock on Woo, skipping Datacomp", sku=sku)
             return PriceComparisonResult(
@@ -64,11 +61,7 @@ class PriceComparator:
                 woo_url=woo_result.url,
             )
 
-        # 3. Товар "outofstock" -> Перевіряємо постачальника (Datacomp) ТІЛЬКИ по SKU
         if not sku:
-            logger.error(
-                "Product is outofstock but has no SKU to check supplier", product=woo_result.name
-            )
             return PriceComparisonResult(
                 product_name=woo_result.name,
                 woo_price=woo_result.price_uah,
@@ -84,12 +77,17 @@ class PriceComparator:
         dc_url = None
 
         cache_entry = await self.cache_service.get(sku)
-        if cache_entry and not cache_entry.is_expired(self.cache_service.ttl_days):
+        # ПРОБИВАЄМО КЕШ, ЯКЩО ЦЕ CHECKOUT
+        if (
+            not is_checkout
+            and cache_entry
+            and not cache_entry.is_expired(self.cache_service.ttl_days)
+        ):
             logger.info("Cache HIT", sku=sku)
             dc_price_uah = cache_entry.price_uah
             dc_availability_raw = cache_entry.availability_status
         else:
-            logger.info("Cache MISS or EXPIRED, scraping Datacomp by SKU", sku=sku)
+            logger.info("Cache MISS or FORCE REFRESH", sku=sku, is_checkout=is_checkout)
             dc_result = await self.scraper_service.scrape_datacomp(sku)
 
             if dc_result:
@@ -109,7 +107,6 @@ class PriceComparator:
                     )
                     await self.cache_service.set(new_entry)
 
-        # 4. Аналізуємо маржу для товарів від постачальника
         mapped_availability = "Під замовлення від постачальника (доставка 14-20 днів)"
         diff_woo = None
         needs_alert = False
@@ -120,13 +117,7 @@ class PriceComparator:
 
             if diff_woo < self.margin_threshold:
                 needs_alert = True
-                alert_reason = "low_margin"
-                # Замість блокування відповіді, передаємо LLM команду на збір ліда
-                mapped_availability = (
-                    "Спеціальна пропозиція. Інструкція для бота: Скажи клієнту, що для "
-                    "цього товару доступна індивідуальна знижка. Запропонуй передати його "
-                    "дані (телефон з Telegram/Viber) менеджеру для узгодження фінальної ціни."
-                )
+                alert_reason = "checkout_margin_issue" if is_checkout else "low_margin"
                 await self.cache_service.invalidate(sku)
 
         elif woo_result.price_uah and not dc_price_uah:
