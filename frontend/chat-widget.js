@@ -254,11 +254,32 @@ class ChatWidget {
         const chunks = buffer.split("\n\n");
         buffer = chunks.pop();
 
+        // Оголошуємо змінні для метаданих перед циклом while (true):
+        // let currentLinks = [];
+        // let requiresLead = false;
+
         for (const chunk of chunks) {
           if (chunk.startsWith("data: ")) {
             const data = chunk.slice(6);
-            if (data === "[DONE]") return;
+
+            if (data === "[DONE]") {
+              // Рендеримо інтерактивні елементи після завершення тексту
+              this._renderInteractiveElements(botBubble, currentLinks, requiresLead);
+              return;
+            }
             if (data.startsWith("[ERROR]")) throw new Error(data.slice(7));
+
+            // Перехоплюємо метадані
+            if (data.startsWith("[METADATA] ")) {
+              try {
+                const meta = JSON.parse(data.slice(11));
+                currentLinks = meta.links || [];
+                requiresLead = meta.requires_lead || false;
+              } catch (e) {
+                console.error("Failed to parse metadata", e);
+              }
+              continue; // Пропускаємо рендер тексту для цього чанка
+            }
 
             pendingText += data;
             if (!isUpdating) {
@@ -315,6 +336,35 @@ class ChatWidget {
       throw error;
     }
   }
-}
+_renderInteractiveElements(container, links, requiresLead) {
+    if (links.length > 0) {
+      const linksContainer = document.createElement("div");
+      linksContainer.className = "interactive-links";
+      links.forEach(link => {
+        const btn = document.createElement("a");
+        btn.href = link.url;
+        btn.target = "_blank";
+        btn.className = "bb-link-btn";
+        btn.textContent = link.text;
+        linksContainer.appendChild(btn);
+      });
+      container.appendChild(linksContainer);
+    }
 
+    if (requiresLead) {
+      const leadContainer = document.createElement("div");
+      leadContainer.className = "lead-capture-box";
+      leadContainer.innerHTML = `
+        <div class="lead-hint">Введіть ваш номер телефону (Telegram/Viber) нижче:</div>
+      `;
+      container.appendChild(leadContainer);
+      this._elements.input.placeholder = "+380XXXXXXXXX";
+      this._elements.input.focus();
+    } else {
+      this._elements.input.placeholder = this._config.placeholder;
+    }
+
+    this._elements.messages.scrollTop = this._elements.messages.scrollHeight;
+  }
+}
 window.ChatWidget = ChatWidget;
