@@ -1,11 +1,12 @@
 import json
+import re
 import time
 from collections.abc import AsyncGenerator
 from typing import cast
 
 from app.core.config import Settings
 from app.core.logging_config import get_logger
-from app.schemas.chat import RAGResponse
+from app.schemas.chat import LeadData, RAGResponse
 from app.services.openai_service import OpenAIService
 from app.services.price_comparator import PriceComparator
 from app.services.telegram_service import TelegramService
@@ -206,6 +207,24 @@ class RAGEngine:
         if session_id not in _chat_memory:
             _chat_memory[session_id] = []
 
+        # ЖОРСТКЕ ПЕРЕХОПЛЕННЯ ЛІДІВ (Байпас LLM)
+        cleaned_q = re.sub(r"[\s\-\(\)]", "", question)
+        if re.match(r"^(?:\+380|380|0)\d{9}$", cleaned_q):
+            logger.info("Direct lead captured from chat", session_id=session_id)
+            try:
+                lead = LeadData(phone=cleaned_q)
+                await self.telegram_service.send_lead(
+                    lead, context_info=f"Зібрано у чаті. Сесія: {session_id}"
+                )
+                msg = "Дякую! Контакти успішно передано. Наш менеджер зв'яжеться з вами найближчим часом."
+                _chat_memory[session_id].append({"role": "user", "content": question})
+                _chat_memory[session_id].append({"role": "bot", "content": msg})
+                return RAGResponse(
+                    answer=msg, sources=[], has_context=False, links=[], requires_lead=False
+                )
+            except ValueError:
+                pass  # Якщо валідація впала, віддаємо запит на LLM
+
         history = _chat_memory[session_id][-6:]
         history_context = "\n".join(
             [
@@ -215,6 +234,13 @@ class RAGEngine:
         )
 
         intent_data = await self.detect_intent(question, history_context)
+
+        # САНІТИЗАЦІЯ ПАМ'ЯТІ ПРИ ЗМІНІ ТЕМИ ПОШУКУ
+        if intent_data.get("intent") == "search":
+            # Видаляємо всі попередні відповіді бота, щоб старий товар не отруював контекст
+            _chat_memory[session_id] = [
+                m for m in _chat_memory[session_id] if m.get("role") == "user"
+            ]
         normalized_query = intent_data.get("normalized_faq_query")
 
         context_chunks: list[str] = []
@@ -283,12 +309,39 @@ class RAGEngine:
         if session_id not in _chat_memory:
             _chat_memory[session_id] = []
 
+        # ЖОРСТКЕ ПЕРЕХОПЛЕННЯ ЛІДІВ (Байпас LLM для Stream)
+        cleaned_q = re.sub(r"[\s\-\(\)]", "", question)
+        if re.match(r"^(?:\+380|380|0)\d{9}$", cleaned_q):
+            logger.info("Direct lead captured from stream", session_id=session_id)
+            try:
+                lead = LeadData(phone=cleaned_q)
+                await self.telegram_service.send_lead(
+                    lead, context_info=f"Зібрано у чаті. Сесія: {session_id}"
+                )
+                msg = "Дякую! Контакти успішно передано. Наш менеджер зв'яжеться з вами найближчим часом."
+
+                meta_payload = json.dumps({"links": [], "requires_lead": False})
+                yield f"[METADATA] {meta_payload}\n\n"
+                yield msg
+
+                _chat_memory[session_id].append({"role": "user", "content": question})
+                _chat_memory[session_id].append({"role": "bot", "content": msg})
+                return
+            except ValueError:
+                pass
+
         history = _chat_memory[session_id][-6:]
         history_context = "\n".join(
             [f"{'Клієнт' if m['role'] == 'user' else 'Ти'}: {m['content']}" for m in history]
         )
 
         intent_data = await self.detect_intent(question, history_context)
+
+        # САНІТИЗАЦІЯ ПАМ'ЯТІ ПРИ ЗМІНІ ТЕМИ ПОШУКУ
+        if intent_data.get("intent") == "search":
+            _chat_memory[session_id] = [
+                m for m in _chat_memory[session_id] if m.get("role") == "user"
+            ]
         normalized_query = intent_data.get("normalized_faq_query")
 
         context_chunks: list[str] = []
