@@ -29,7 +29,8 @@ def get_rag_engine(settings: Settings = Depends(get_settings)) -> RAGEngine:
     woo_service = WooService(settings)
     scraper_service = ScraperService(settings)
     cache_service = CacheService(settings)
-    price_comparator = PriceComparator(woo_service, scraper_service, cache_service)
+
+    price_comparator = PriceComparator(woo_service, scraper_service, cache_service, settings)
     telegram_service = TelegramService(settings)
 
     return RAGEngine(
