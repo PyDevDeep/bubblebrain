@@ -96,17 +96,17 @@ class RAGEngine:
 
     async def _get_intent_context(
         self, intent_data: dict[str, str | None], history: list[dict[str, str]]
-    ) -> tuple[list[str], list[str]]:
+    ) -> tuple[list[str], list[str], list[dict[str, str]], bool]:
         system_instructions: list[str] = []
         product_facts: list[str] = []
+        extracted_links: list[dict[str, str]] = []
+        requires_lead: bool = False
 
         intent_type = intent_data.get("intent", "faq")
-        # Якщо product_name порожній, намагаємось витягнути з останнього повідомлення бота в історії
         product_name = intent_data.get("product_name")
         if not product_name and intent_type == "product":
             for msg in reversed(history):
                 if msg["role"] == "bot" and "Товар" in msg["content"]:
-                    # Логіка витягнення назви з тексту бота
                     pass
 
         # 1. СКРАПЕР КОНКРЕТНОГО ТОВАРУ
@@ -117,31 +117,34 @@ class RAGEngine:
 
             if result.needs_alert:
                 if result.alert_reason == "low_margin":
+                    requires_lead = True
                     msg = f"🚨 <b>Аномалія ціни / Низька маржа!</b>\n📦 Товар: {result.product_name}\n🌐 Наша ціна: {result.woo_price} грн\n🇸🇰 Закупка: {result.datacomp_price_uah} грн\n📉 Маржа: {result.diff_woo_uah} грн"
+                    system_instructions.append(
+                        "Інструкція: Для цього товару доступна індивідуальна знижка. Запропонуй клієнту передати номер телефону (Viber/Telegram), щоб менеджер узгодив з ним фінальну ціну."
+                    )
                 else:
-                    msg = f"⚠️ <b>Помилка Скрапера!</b>\n📦 Товар: {result.product_name}\nНе вдалося отримати ціну постачальника."
-
+                    msg = f"⚠️ <b>Помилка Скрапера!</b>\n📦 Товар: {result.product_name}\nНе вдалося отримати ціну."
+                    system_instructions.append(
+                        f"Інформація для тебе: ціна на '{product_name_str}' зараз перевіряється. Скажи клієнту, що запит передано менеджеру."
+                    )
                 await self.telegram_service.send_alert(msg)
-                system_instructions.append(
-                    f"Інформація для тебе: ціна та наявність на '{product_name_str}' зараз перевіряється. М'яко скажи клієнту, що запит передано менеджеру для уточнення. Не називай жодних цін."
-                )
             elif result.woo_price:
-                url_text = f" Посилання на товар: {result.woo_url}" if result.woo_url else ""
+                if result.woo_url:
+                    extracted_links.append(
+                        {"text": f"Переглянути {result.product_name}", "url": result.woo_url}
+                    )
                 product_facts.append(
-                    f"Дані для відповіді: Товар '{result.product_name}' коштує {result.woo_price} грн. Умови: {result.availability_status}.{url_text}\n"
-                    f"КРИТИЧНО: Якщо товар 'В наявності', називай термін доставки ТІЛЬКИ 1-3 дні. Якщо 'Під замовлення', називай ТІЛЬКИ 14-20 днів."
+                    f"Дані: Товар '{result.product_name}', {result.woo_price} грн. Умови: {result.availability_status}.\n"
+                    f"КРИТИЧНО: Якщо товар 'В наявності' - 1-3 дні. 'Під замовлення' - 14-20 днів. ПОСИЛАННЯ В ТЕКСТ НЕ ПИСАТИ!"
                 )
             else:
-                system_instructions.append(
-                    f"Інформація для тебе: товар '{product_name_str}' відсутній на нашому сайті."
-                )
+                system_instructions.append(f"Інформація: товар '{product_name_str}' відсутній.")
 
-        # 2. КАТЕГОРІЙНИЙ ПОШУК ТА РЕКОМЕНДАЦІЇ
+        # 2. КАТЕГОРІЙНИЙ ПОШУК
         elif intent_type == "search":
             search_term = str(
                 intent_data.get("search_term") or intent_data.get("search_query") or ""
             )
-
             if search_term:
                 logger.info("Search intent detected", query=search_term)
                 woo_products = await self.price_comparator.woo_service.search_products_async(
@@ -150,32 +153,35 @@ class RAGEngine:
 
                 search_facts: list[str] = []
                 if woo_products:
-                    search_facts.append("Знайдено у нашому магазині (Digital Dreams):")
+                    search_facts.append("Знайдено у нашому магазині:")
                     for p in woo_products:
                         status = "В наявності" if p.stock_status == "instock" else "Під замовлення"
-                        search_facts.append(
-                            f"- {p.name}: ціна {p.price_uah} грн, статус: {status}, посилання: {p.url}"
-                        )
-
-                if search_facts:
+                        search_facts.append(f"- {p.name}: {p.price_uah} грн, статус: {status}")
+                        if p.url:
+                            extracted_links.append({"text": p.name, "url": p.url})
+                    search_facts.append(
+                        "ВКАЗІВКА: Посилання вже згенеровані системою. Не дублюй їх у тексті."
+                    )
                     product_facts.append("\n".join(search_facts))
                 else:
+                    requires_lead = True
                     system_instructions.append(
-                        f"Інформація для тебе: за запитом '{search_term}' товарів у каталозі не знайдено. Ввічливо запропонуй залишити контакти для менеджера."
+                        f"Інформація: за запитом '{search_term}' нічого не знайдено. Запропонуй клієнту залишити номер телефону, щоб менеджер підібрав аналог."
                     )
 
-        # 3. ОФОРМЛЕННЯ ЗАМОВЛЕННЯ (CHECKOUT)
+        # 3. CHECKOUT
         if intent_type == "checkout" and product_name:
+            requires_lead = True
             product_name_str = str(product_name)
             result = await self.price_comparator.compare(product_name_str)
-            woo_url = result.woo_url if result and result.woo_url else "нашому сайті"
+            if result and result.woo_url:
+                extracted_links.append({"text": "Оформити замовлення", "url": result.woo_url})
             system_instructions.append(
-                f"Клієнт хоче оформити замовлення на '{product_name_str}'. ТВОЯ ЗАДАЧА — дати клієнту 2 варіанти:\n"
-                f"1. Оформити самостійно: надай посилання {woo_url}\n"
-                f"2. Через менеджера: просто напишіть мені ваші дані (ПІБ, телефон, місто, номер відділення НП, спосіб оплати), і я передам їх менеджеру, який зв'яжеться з вами найближчим часом."
+                f"Клієнт хоче купити '{product_name_str}'. ТВОЯ ЗАДАЧА:\n"
+                f"Скажи, що він може оформити замовлення самостійно (кнопка вже згенерована) АБО просто залишити номер телефону тут, і менеджер все оформить сам."
             )
 
-        return product_facts, system_instructions
+        return product_facts, system_instructions, extracted_links, requires_lead
 
     async def process_query(self, question: str, session_id: str = "default") -> RAGResponse:
         """Повний цикл RAG для синхронних запитів."""
@@ -205,7 +211,12 @@ class RAGEngine:
             )
             timings.update(pinecone_timings)
 
-        product_facts, system_instructions = await self._get_intent_context(intent_data, history)
+        (
+            product_facts,
+            system_instructions,
+            extracted_links,
+            requires_lead,
+        ) = await self._get_intent_context(intent_data, history)
 
         final_context = list(context_chunks)
         if product_facts:
@@ -216,7 +227,13 @@ class RAGEngine:
         if not final_context:
             logger.info("RAG Engine fallback: no context", threshold=self.threshold)
             timings["total_ms"] = round((time.perf_counter() - start_total) * 1000, 2)
-            return RAGResponse(answer=NO_CONTEXT_RESPONSE, sources=[], has_context=False)
+            return RAGResponse(
+                answer=NO_CONTEXT_RESPONSE,
+                sources=[],
+                has_context=False,
+                links=[],
+                requires_lead=True,  # Якщо нічого не знайдено, пропонуємо залишити контакти
+            )
 
         extended_user_message = f"[ІСТОРІЯ ЧАТУ]\n{history_context if history_context else 'Це перше повідомлення.'}\n\n[ПОТОЧНИЙ ЗАПИТ КЛІЄНТА]\n{question}"
 
@@ -233,7 +250,15 @@ class RAGEngine:
         _chat_memory[session_id].append({"role": "bot", "content": answer})
 
         logger.info("RAG sync query processed", timings=timings, sources_count=len(sources))
-        return RAGResponse(answer=answer, sources=sources, has_context=True)
+        return RAGResponse.model_validate(
+            {
+                "answer": answer,
+                "sources": sources,
+                "has_context": True,
+                "links": extracted_links,
+                "requires_lead": requires_lead,
+            }
+        )
 
     async def process_query_stream(
         self, question: str, session_id: str = "default"
@@ -255,7 +280,16 @@ class RAGEngine:
         if intent_data.get("intent") in ["faq", "hybrid"] and normalized_query:
             context_chunks, _, _ = await self._retrieve_context(str(normalized_query))
 
-        product_facts, system_instructions = await self._get_intent_context(intent_data, history)
+        (
+            product_facts,
+            system_instructions,
+            extracted_links,
+            requires_lead,
+        ) = await self._get_intent_context(intent_data, history)
+
+        # УВАГА: Для SSE стрімінгу передача метаданих (links, requires_lead)
+        # вимагає оновлення формату генератора в chat.py на кастомні event-типи.
+        # Наразі фронтенд отримуватиме лише потік тексту відповіді.
 
         final_context = list(context_chunks)
         if product_facts:
@@ -271,6 +305,10 @@ class RAGEngine:
 {question}
 """
         _chat_memory[session_id].append({"role": "user", "content": question})
+
+        # Спочатку віддаємо фронтенду метадані (посилання та прапорці)
+        meta_payload = json.dumps({"links": extracted_links, "requires_lead": requires_lead})
+        yield f"[METADATA] {meta_payload}"
 
         stream = self.openai_service.stream_chat_completion(
             system_prompt=RAG_SYSTEM_PROMPT,
