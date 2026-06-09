@@ -14,6 +14,8 @@ class WooService:
         self.woo_ck = settings.woo_ck
         self.woo_cs = settings.woo_cs
         self.base_url = "https://digitaldreams.com.ua/wp-json/wc/v3/products"
+        # Жорсткий таймаут: 2 сек на з'єднання, 5 сек на отримання даних
+        self.timeout = httpx.Timeout(5.0, connect=2.0)
 
     async def search_product_async(self, search_term: str) -> WooProduct | None:
         """Асинхронний пошук товару у WooCommerce за назвою або SKU."""
@@ -24,7 +26,7 @@ class WooService:
             "per_page": 1,
         }
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 resp = await client.get(self.base_url, params=params)
                 if resp.status_code == 200:
@@ -53,8 +55,14 @@ class WooService:
                             url=data_sku[0].get("permalink", ""),
                             stock_status=data_sku[0].get("stock_status", "instock"),
                         )
+            except httpx.TimeoutException:
+                logger.error("WooCommerce API Timeout", search_term=search_term)
             except httpx.RequestError as e:
-                logger.error("WooCommerce API Error", error=str(e), search_term=search_term)
+                logger.error("WooCommerce API Request Error", error=str(e), search_term=search_term)
+            except Exception as e:
+                logger.error(
+                    "WooCommerce API Unexpected Error", error=str(e), search_term=search_term
+                )
 
         return None
 
@@ -68,7 +76,7 @@ class WooService:
         }
 
         products: list[WooProduct] = []
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 resp = await client.get(self.base_url, params=params)
                 if resp.status_code == 200:
@@ -85,9 +93,15 @@ class WooService:
                                         stock_status=str(raw_item.get("stock_status") or "instock"),
                                     )
                                 )
+            except httpx.TimeoutException:
+                logger.error("WooCommerce API Multi Search Timeout", search_term=search_term)
             except httpx.RequestError as e:
                 logger.error(
-                    "WooCommerce API Multi Search Error",
+                    "WooCommerce API Multi Search Error", error=str(e), search_term=search_term
+                )
+            except Exception as e:
+                logger.error(
+                    "WooCommerce API Multi Search Unexpected Error",
                     error=str(e),
                     search_term=search_term,
                 )

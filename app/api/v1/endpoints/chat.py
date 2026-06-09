@@ -54,16 +54,25 @@ async def chat_completion(
     Синхронний ендпоінт чату. Запускає RAG pipeline та повертає повну відповідь.
     """
     logger.info("Sync chat request received", session_id=chat_request.session_id)
-
-    rag_response = await rag_engine.process_query(chat_request.question)
     session_id = chat_request.session_id or str(uuid.uuid4())
 
-    return ChatResponse(
-        answer=rag_response.answer,
-        sources=rag_response.sources,
-        has_context=rag_response.has_context,
-        session_id=session_id,
-    )
+    try:
+        rag_response = await rag_engine.process_query(chat_request.question)
+        return ChatResponse(
+            answer=rag_response.answer,
+            sources=rag_response.sources,
+            has_context=rag_response.has_context,
+            session_id=session_id,
+        )
+    except Exception as e:
+        logger.error("Critical error in sync chat pipeline", error=str(e), exc_info=True)
+        # Fallback відповідь замість 500 помилки
+        return ChatResponse(
+            answer="Вибачте, виникла технічна затримка при обробці запиту. Спробуйте переформулювати питання або зверніться до нашого менеджера напряму.",
+            sources=[],
+            has_context=False,
+            session_id=session_id,
+        )
 
 
 @chat_router.post("/stream")
@@ -83,11 +92,11 @@ async def chat_stream(
     async def event_generator() -> AsyncGenerator[str]:
         try:
             async for token in rag_engine.process_query_stream(chat_request.question, session_id):
-                # Формат SSE згідно з вимогами Flowise/Roadmap
                 yield f"data: {token}\n\n"
         except Exception as e:
-            logger.error("Error during streaming", error=str(e))
-            yield f"data: [ERROR] {e!s}\n\n"
+            logger.error("Critical error during streaming", error=str(e), exc_info=True)
+            fallback_msg = "Технічна затримка на лінії. Оновіть сторінку або напишіть нам пізніше."
+            yield f"data: {fallback_msg}\n\n"
         finally:
             yield "data: [DONE]\n\n"
 
