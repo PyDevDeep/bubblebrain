@@ -121,6 +121,12 @@ class PriceComparator:
             if diff_woo < self.margin_threshold:
                 needs_alert = True
                 alert_reason = "low_margin"
+                # Замість блокування відповіді, передаємо LLM команду на збір ліда
+                mapped_availability = (
+                    "Спеціальна пропозиція. Інструкція для бота: Скажи клієнту, що для "
+                    "цього товару доступна індивідуальна знижка. Запропонуй передати його "
+                    "дані (телефон з Telegram/Viber) менеджеру для узгодження фінальної ціни."
+                )
                 await self.cache_service.invalidate(sku)
 
         elif woo_result.price_uah and not dc_price_uah:
