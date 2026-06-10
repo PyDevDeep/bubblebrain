@@ -49,14 +49,14 @@ class RAGEngine:
 ПРАВИЛА:
 1. Якщо клієнт вказує КОНКРЕТНУ назву моделі (наприклад "Acer CZ342CUR"):
    -> {{"intent": "product", "product_name": "Точна назва", "search_term": null, "normalized_faq_queries": []}}
-2. Якщо клієнт задає цінові рамки ("15000-20000"), просить кілька товарів або вказує НОВУ загальну категорію ("а є бездротові мишки?"):
-   -> {{"intent": "search", "product_name": null, "search_term": "максимально коротке базове слово для пошуку (наприклад 'мишка' замість 'бездротові мишки')", "normalized_faq_queries": []}}
+2. Якщо клієнт задає цінові рамки ("15000-20000"), просить кілька товарів або вказує загальну категорію з характеристиками ("бездротова ігрова мишка Logitech G Pro"):
+   -> {{"intent": "search", "product_name": null, "search_term": "повний комерційний пошуковий запит (наприклад, 'бездротова ігрова мишка Logitech G Pro', 'монітор Samsung Odyssey'). Зберігай бренд та важливі характеристики, не обрізай до одного слова!", "normalized_faq_queries": []}}
 3. Якщо клієнт використовує займенники ("цей", "він") або задає уточнююче питання ВИКЛЮЧНО про характеристики (без вказівки бренду):
    -> Знайди останню модель в Історії. Intent має бути "product".
 4. Якщо клієнт явно висловлює бажання КУПИТИ або ОФОРМИТИ ЗАМОВЛЕННЯ:
    -> {{"intent": "checkout", "product_name": "ЗНАЙДЕНА_НАЗВА_З_ІСТОРІЇ", "search_term": null, "normalized_faq_queries": []}}
-5. КРИТИЧНО: Запити про доставку, оплату, гарантію або розстрочку (навіть якщо вони комбіновані або стосуються конкретного товару):
-   -> {{"intent": "hybrid" або "faq", "product_name": "назва з історії (якщо є)", "search_term": null, "normalized_faq_queries": ["оплата частинами", "доставка"]}} (розбий комбіноване питання на окремі теми).
+5. КРИТИЧНО: Запити про доставку, оплату, гарантію або розстрочку (навіть якщо вони комбіновані або стосуються конкретного товару, тобто інтент "product"):
+   -> {{"intent": "hybrid" або "faq", "product_name": "назва з історії (якщо є)", "search_term": null, "normalized_faq_queries": ["оплата частинами", "доставка"]}} (розбий комбіноване питання на окремі теми). Навіть якщо інтент "product", але є питання про оплату/доставку — обов'язково заповни масив "normalized_faq_queries".
 
 Відповідай ЛИШЕ валідним JSON."""
 
@@ -68,7 +68,7 @@ class RAGEngine:
             )
             cleaned = response.replace("```json", "").replace("```", "").strip()
             parsed_json = json.loads(cleaned)
-            return cast(dict[str, str | None], parsed_json)
+            return cast(dict[str, str | None | list[str]], parsed_json)
         except Exception as e:
             logger.error("Intent detection failed", error=str(e))
             return {"intent": "faq", "normalized_faq_queries": [question]}
@@ -164,6 +164,10 @@ class RAGEngine:
                         extracted_links.append(
                             {"text": f"Переглянути {result.product_name}", "url": result.woo_url}
                         )
+                    system_instructions.append(
+                        f"Бекенд знайшов товар '{result.product_name}', який є відповіддю на поточний запит клієнта. "
+                        f"Обов'язково розкажи про нього і не кажи, що інформації не знайдено."
+                    )
                     product_facts.append(
                         f"Дані: Товар '{result.product_name}', {result.woo_price} грн. Умови: {result.availability_status}.\n"
                         f"КРИТИЧНО: Якщо товар 'В наявності' - 1-3 дні. 'Під замовлення' - 14-20 днів. ПОСИЛАННЯ В ТЕКСТ НЕ ПИСАТИ!"
@@ -171,7 +175,6 @@ class RAGEngine:
                 else:
                     system_instructions.append(f"Інформація: товар '{product_name_str}' відсутній.")
 
-        # 2. КАТЕГОРІЙНИЙ ПОШУК
         elif intent_type == "search":
             search_term = str(
                 intent_data.get("search_term") or intent_data.get("search_query") or ""
@@ -203,13 +206,11 @@ class RAGEngine:
         return product_facts, system_instructions, extracted_links, requires_lead
 
     async def process_query(self, question: str, session_id: str = "default") -> RAGResponse:
-        """Повний цикл RAG для синхронних запитів."""
         start_total = time.perf_counter()
 
         if session_id not in _chat_memory:
             _chat_memory[session_id] = []
 
-        # ЖОРСТКЕ ПЕРЕХОПЛЕННЯ ЛІДІВ (Байпас LLM)
         cleaned_q = re.sub(r"[\s\-\(\)]", "", question)
         phone_match = re.search(r"(?:\+380|380|0)\d{9}", cleaned_q)
         if phone_match:
@@ -226,22 +227,8 @@ class RAGEngine:
                 return RAGResponse(
                     answer=msg, sources=[], has_context=False, links=[], requires_lead=False
                 )
-            except ValueError:
-                pass
-            logger.info("Direct lead captured from chat", session_id=session_id)
-            try:
-                lead = LeadData(phone=cleaned_q)
-                await self.telegram_service.send_lead(
-                    lead, context_info=f"Повідомлення клієнта: '{question}'. Сесія: {session_id}"
-                )
-                msg = "Дякую! Контакти успішно передано. Наш менеджер зв'яжеться з вами найближчим часом."
-                _chat_memory[session_id].append({"role": "user", "content": question})
-                _chat_memory[session_id].append({"role": "bot", "content": msg})
-                return RAGResponse(
-                    answer=msg, sources=[], has_context=False, links=[], requires_lead=False
-                )
-            except ValueError:
-                pass  # Якщо валідація впала, віддаємо запит на LLM
+            except Exception as e:
+                logger.warning("Lead capture validation failed", error=str(e))
 
         history = _chat_memory[session_id][-6:]
         history_context = "\n".join(
@@ -253,21 +240,21 @@ class RAGEngine:
 
         intent_data = await self.detect_intent(question, history_context)
 
-        # САНІТИЗАЦІЯ ПАМ'ЯТІ ПРИ ЗМІНІ ТЕМИ ПОШУКУ
         if intent_data.get("intent") == "search":
-            # Видаляємо всі попередні відповіді бота, щоб старий товар не отруював контекст
-            _chat_memory[session_id] = [
-                m for m in _chat_memory[session_id] if m.get("role") == "user"
-            ]
+            _chat_memory[session_id] = []
         normalized_queries = intent_data.get("normalized_faq_queries", [])
+        if isinstance(normalized_queries, str):
+            normalized_queries = [normalized_queries]
+        elif not isinstance(normalized_queries, list):
+            normalized_queries = []
 
         context_chunks: list[str] = []
         sources: list[str] = []
         timings: dict[str, float] = {}
 
-        if intent_data.get("intent") in ["faq", "hybrid"] and normalized_queries:
+        if normalized_queries:
             for nq in normalized_queries:
-                if isinstance(nq, str) and nq.strip():
+                if str(nq).strip():
                     c_chunks, c_sources, pinecone_timings = await self._retrieve_context(nq)
                     context_chunks.extend(c_chunks)
                     for src in c_sources:
@@ -297,7 +284,7 @@ class RAGEngine:
                 sources=[],
                 has_context=False,
                 links=[],
-                requires_lead=True,  # Якщо нічого не знайдено, пропонуємо залишити контакти
+                requires_lead=True,
             )
 
         extended_user_message = f"[ІСТОРІЯ ЧАТУ]\n{history_context if history_context else 'Це перше повідомлення.'}\n\n[ПОТОЧНИЙ ЗАПИТ КЛІЄНТА]\n{question}"
@@ -352,8 +339,8 @@ class RAGEngine:
                 _chat_memory[session_id].append({"role": "user", "content": question})
                 _chat_memory[session_id].append({"role": "bot", "content": msg})
                 return
-            except ValueError:
-                pass
+            except ValueError as e:
+                logger.warning("Lead capture validation failed in stream", error=str(e))
 
         history = _chat_memory[session_id][-6:]
         history_context = "\n".join(
@@ -364,16 +351,18 @@ class RAGEngine:
 
         # САНІТИЗАЦІЯ ПАМ'ЯТІ ПРИ ЗМІНІ ТЕМИ ПОШУКУ
         if intent_data.get("intent") == "search":
-            _chat_memory[session_id] = [
-                m for m in _chat_memory[session_id] if m.get("role") == "user"
-            ]
+            _chat_memory[session_id] = []
         normalized_queries = intent_data.get("normalized_faq_queries", [])
+        if isinstance(normalized_queries, str):
+            normalized_queries = [normalized_queries]
+        elif not isinstance(normalized_queries, list):
+            normalized_queries = []
 
         context_chunks: list[str] = []
 
-        if intent_data.get("intent") in ["faq", "hybrid"] and normalized_queries:
+        if normalized_queries:
             for nq in normalized_queries:
-                if isinstance(nq, str) and nq.strip():
+                if str(nq).strip():
                     c_chunks, _, _ = await self._retrieve_context(nq)
                     context_chunks.extend(c_chunks)
 
