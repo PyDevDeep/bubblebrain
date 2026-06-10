@@ -195,7 +195,6 @@ class ChatWidget {
       this._elements.input.focus();
     }
   }
-
   async _sendMessageStream(text) {
     const botBubble = this._appendMessage("bot", "");
     const controller = new AbortController();
@@ -227,9 +226,12 @@ class ChatWidget {
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
 
-      // Фікс Layout Thrashing: Батчинг оновлень через rAF
       let pendingText = "";
       let isUpdating = false;
+
+      // Стейт для кнопок і форм
+      let currentLinks = [];
+      let requiresLead = false;
 
       const updateDOM = () => {
         if (!isUpdating) return;
@@ -247,6 +249,12 @@ class ChatWidget {
             isUpdating = true;
             updateDOM();
           }
+          // Рендеримо кнопки після завершення стріму
+          this._renderInteractiveElements(
+            botBubble,
+            currentLinks,
+            requiresLead,
+          );
           break;
         }
 
@@ -254,22 +262,24 @@ class ChatWidget {
         const chunks = buffer.split("\n\n");
         buffer = chunks.pop();
 
-        // Оголошуємо змінні для метаданих перед циклом while (true):
-        // let currentLinks = [];
-        // let requiresLead = false;
-
         for (const chunk of chunks) {
           if (chunk.startsWith("data: ")) {
             const data = chunk.slice(6);
-
             if (data === "[DONE]") {
-              // Рендеримо інтерактивні елементи після завершення тексту
-              this._renderInteractiveElements(botBubble, currentLinks, requiresLead);
+              if (pendingText) {
+                isUpdating = true;
+                updateDOM();
+              }
+              this._renderInteractiveElements(
+                botBubble,
+                currentLinks,
+                requiresLead,
+              );
               return;
             }
             if (data.startsWith("[ERROR]")) throw new Error(data.slice(7));
 
-            // Перехоплюємо метадані
+            // Перехоплювач метаданих
             if (data.startsWith("[METADATA] ")) {
               try {
                 const meta = JSON.parse(data.slice(11));
@@ -278,7 +288,7 @@ class ChatWidget {
               } catch (e) {
                 console.error("Failed to parse metadata", e);
               }
-              continue; // Пропускаємо рендер тексту для цього чанка
+              continue;
             }
 
             pendingText += data;
@@ -290,17 +300,49 @@ class ChatWidget {
         }
       }
     } catch (error) {
+      console.error("BubbleBrain Stream Error:", error); // ВІДСТЕЖЕННЯ РЕАЛЬНОГО ЗБОЮ
       if (error.name === "AbortError") {
         throw new Error("Timeout запиту.");
       }
       if (botBubble.textContent.length > 0) {
-        botBubble.textContent += "\n(Зв'язок розірвано)";
+        botBubble.textContent += `\n(Збій потоку: ${error.message})`;
       } else {
         throw error;
       }
     }
   }
 
+  // МЕТОД ДЛЯ РЕНДЕРУ КНОПОК - ДОДАТИ ПІСЛЯ _sendMessageStream
+  _renderInteractiveElements(container, links, requiresLead) {
+    if (links.length > 0) {
+      const linksContainer = document.createElement("div");
+      linksContainer.className = "interactive-links";
+      links.forEach((link) => {
+        const btn = document.createElement("a");
+        btn.href = link.url;
+        btn.target = "_blank";
+        btn.className = "bb-link-btn";
+        btn.textContent = link.text;
+        linksContainer.appendChild(btn);
+      });
+      container.appendChild(linksContainer);
+    }
+
+    if (requiresLead) {
+      const leadContainer = document.createElement("div");
+      leadContainer.className = "lead-capture-box";
+      leadContainer.innerHTML = `
+        <div class="lead-hint">Введіть ваш номер телефону (Telegram/Viber) нижче:</div>
+      `;
+      container.appendChild(leadContainer);
+      this._elements.input.placeholder = "+380XXXXXXXXX";
+      this._elements.input.focus();
+    } else {
+      this._elements.input.placeholder = this._config.placeholder;
+    }
+
+    this._elements.messages.scrollTop = this._elements.messages.scrollHeight;
+  }
   async _sendMessageSync(text) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -335,36 +377,6 @@ class ChatWidget {
         throw new Error("Запит зайняв забагато часу. Спробуйте ще раз.");
       throw error;
     }
-  }
-_renderInteractiveElements(container, links, requiresLead) {
-    if (links.length > 0) {
-      const linksContainer = document.createElement("div");
-      linksContainer.className = "interactive-links";
-      links.forEach(link => {
-        const btn = document.createElement("a");
-        btn.href = link.url;
-        btn.target = "_blank";
-        btn.className = "bb-link-btn";
-        btn.textContent = link.text;
-        linksContainer.appendChild(btn);
-      });
-      container.appendChild(linksContainer);
-    }
-
-    if (requiresLead) {
-      const leadContainer = document.createElement("div");
-      leadContainer.className = "lead-capture-box";
-      leadContainer.innerHTML = `
-        <div class="lead-hint">Введіть ваш номер телефону (Telegram/Viber) нижче:</div>
-      `;
-      container.appendChild(leadContainer);
-      this._elements.input.placeholder = "+380XXXXXXXXX";
-      this._elements.input.focus();
-    } else {
-      this._elements.input.placeholder = this._config.placeholder;
-    }
-
-    this._elements.messages.scrollTop = this._elements.messages.scrollHeight;
   }
 }
 window.ChatWidget = ChatWidget;

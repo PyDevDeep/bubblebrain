@@ -209,7 +209,23 @@ class RAGEngine:
 
         # ЖОРСТКЕ ПЕРЕХОПЛЕННЯ ЛІДІВ (Байпас LLM)
         cleaned_q = re.sub(r"[\s\-\(\)]", "", question)
-        if re.match(r"^(?:\+380|380|0)\d{9}$", cleaned_q):
+        phone_match = re.search(r"(?:\+380|380|0)\d{9}", cleaned_q)
+        if phone_match:
+            phone_number = phone_match.group(0)
+            logger.info("Direct lead captured from chat", session_id=session_id)
+            try:
+                lead = LeadData(phone=phone_number)
+                await self.telegram_service.send_lead(
+                    lead, context_info=f"Зібрано у чаті. Сесія: {session_id}"
+                )
+                msg = "Дякую! Контакти успішно передано. Наш менеджер зв'яжеться з вами найближчим часом."
+                _chat_memory[session_id].append({"role": "user", "content": question})
+                _chat_memory[session_id].append({"role": "bot", "content": msg})
+                return RAGResponse(
+                    answer=msg, sources=[], has_context=False, links=[], requires_lead=False
+                )
+            except ValueError:
+                pass
             logger.info("Direct lead captured from chat", session_id=session_id)
             try:
                 lead = LeadData(phone=cleaned_q)
@@ -311,10 +327,12 @@ class RAGEngine:
 
         # ЖОРСТКЕ ПЕРЕХОПЛЕННЯ ЛІДІВ (Байпас LLM для Stream)
         cleaned_q = re.sub(r"[\s\-\(\)]", "", question)
-        if re.match(r"^(?:\+380|380|0)\d{9}$", cleaned_q):
+        phone_match = re.search(r"(?:\+380|380|0)\d{9}", cleaned_q)
+        if phone_match:
+            phone_number = phone_match.group(0)
             logger.info("Direct lead captured from stream", session_id=session_id)
             try:
-                lead = LeadData(phone=cleaned_q)
+                lead = LeadData(phone=phone_number)
                 await self.telegram_service.send_lead(
                     lead, context_info=f"Зібрано у чаті. Сесія: {session_id}"
                 )
