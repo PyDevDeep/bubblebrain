@@ -35,26 +35,28 @@ class RAGEngine:
         self.top_k = settings.top_k_results
         self.threshold = settings.similarity_threshold
 
-    async def detect_intent(self, question: str, history_context: str) -> dict[str, str | None]:
+    async def detect_intent(
+        self, question: str, history_context: str
+    ) -> dict[str, str | None | list[str]]:
         prompt = f"""Ти — суворий аналізатор намірів клієнта магазину техніки.
 Історія розмови:
 {history_context if history_context else "Немає"}
 
 Поточний запит: "{question}"
 
-Твоє завдання — повернути JSON з полями: "intent", "product_name", "search_term", "normalized_faq_query".
+Твоє завдання — повернути JSON з полями: "intent", "product_name", "search_term", "normalized_faq_queries" (це має бути масив рядків).
 
 ПРАВИЛА:
 1. Якщо клієнт вказує КОНКРЕТНУ назву моделі (наприклад "Acer CZ342CUR"):
-   -> {{"intent": "product", "product_name": "Точна назва", "search_term": null, "normalized_faq_query": null}}
-2. Якщо клієнт задає цінові рамки ("15000-20000"), просить кілька товарів ("3-4 монітори") або вказує НОВУ загальну категорію ("а є мишки?"):
-   -> {{"intent": "search", "product_name": null, "search_term": "чистий запит без цифр кількості (наприклад 'монітор')", "normalized_faq_query": null}}
-3. КРИТИЧНО ДЛЯ ІСТОРІЇ: Якщо клієнт використовує займенники ("цей", "він") АБО задає уточнююче питання без вказівки бренду ("яка ціна?", "а характеристики?"):
-   -> Обов'язково знайди останню обговорювану модель в Історії (без кирилиці) і поверни її в "product_name". Intent має бути "product".
+   -> {{"intent": "product", "product_name": "Точна назва", "search_term": null, "normalized_faq_queries": []}}
+2. Якщо клієнт задає цінові рамки ("15000-20000"), просить кілька товарів або вказує НОВУ загальну категорію ("а є бездротові мишки?"):
+   -> {{"intent": "search", "product_name": null, "search_term": "максимально коротке базове слово для пошуку (наприклад 'мишка' замість 'бездротові мишки')", "normalized_faq_queries": []}}
+3. Якщо клієнт використовує займенники ("цей", "він") або задає уточнююче питання ВИКЛЮЧНО про характеристики (без вказівки бренду):
+   -> Знайди останню модель в Історії. Intent має бути "product".
 4. Якщо клієнт явно висловлює бажання КУПИТИ або ОФОРМИТИ ЗАМОВЛЕННЯ:
-   -> {{"intent": "checkout", "product_name": "ЗНАЙДЕНА_НАЗВА_З_ІСТОРІЇ", "search_term": null, "normalized_faq_query": null}}
-5. Запити про доставку, оплату або питання до конкретного товару:
-   -> {{"intent": "hybrid" або "faq", "product_name": "назва з історії", "search_term": null, "normalized_faq_query": "перекладений запит"}}
+   -> {{"intent": "checkout", "product_name": "ЗНАЙДЕНА_НАЗВА_З_ІСТОРІЇ", "search_term": null, "normalized_faq_queries": []}}
+5. КРИТИЧНО: Запити про доставку, оплату, гарантію або розстрочку (навіть якщо вони комбіновані або стосуються конкретного товару):
+   -> {{"intent": "hybrid" або "faq", "product_name": "назва з історії (якщо є)", "search_term": null, "normalized_faq_queries": ["оплата частинами", "доставка"]}} (розбий комбіноване питання на окремі теми).
 
 Відповідай ЛИШЕ валідним JSON."""
 
@@ -69,7 +71,7 @@ class RAGEngine:
             return cast(dict[str, str | None], parsed_json)
         except Exception as e:
             logger.error("Intent detection failed", error=str(e))
-            return {"intent": "faq", "normalized_faq_query": question}
+            return {"intent": "faq", "normalized_faq_queries": [question]}
 
     async def _retrieve_context(
         self, search_query: str
@@ -96,7 +98,7 @@ class RAGEngine:
         return context_chunks, sources, {"embedding_ms": emb_time, "retrieval_ms": ret_time}
 
     async def _get_intent_context(
-        self, intent_data: dict[str, str | None], history: list[dict[str, str]]
+        self, intent_data: dict[str, str | None | list[str]], history: list[dict[str, str]]
     ) -> tuple[list[str], list[str], list[dict[str, str]], bool]:
         system_instructions: list[str] = []
         product_facts: list[str] = []
@@ -216,7 +218,7 @@ class RAGEngine:
             try:
                 lead = LeadData(phone=phone_number)
                 await self.telegram_service.send_lead(
-                    lead, context_info=f"Зібрано у чаті. Сесія: {session_id}"
+                    lead, context_info=f"Повідомлення клієнта: '{question}'. Сесія: {session_id}"
                 )
                 msg = "Дякую! Контакти успішно передано. Наш менеджер зв'яжеться з вами найближчим часом."
                 _chat_memory[session_id].append({"role": "user", "content": question})
@@ -230,7 +232,7 @@ class RAGEngine:
             try:
                 lead = LeadData(phone=cleaned_q)
                 await self.telegram_service.send_lead(
-                    lead, context_info=f"Зібрано у чаті. Сесія: {session_id}"
+                    lead, context_info=f"Повідомлення клієнта: '{question}'. Сесія: {session_id}"
                 )
                 msg = "Дякую! Контакти успішно передано. Наш менеджер зв'яжеться з вами найближчим часом."
                 _chat_memory[session_id].append({"role": "user", "content": question})
@@ -257,17 +259,22 @@ class RAGEngine:
             _chat_memory[session_id] = [
                 m for m in _chat_memory[session_id] if m.get("role") == "user"
             ]
-        normalized_query = intent_data.get("normalized_faq_query")
+        normalized_queries = intent_data.get("normalized_faq_queries", [])
 
         context_chunks: list[str] = []
         sources: list[str] = []
         timings: dict[str, float] = {}
 
-        if intent_data.get("intent") in ["faq", "hybrid"] and normalized_query:
-            context_chunks, sources, pinecone_timings = await self._retrieve_context(
-                str(normalized_query)
-            )
-            timings.update(pinecone_timings)
+        if intent_data.get("intent") in ["faq", "hybrid"] and normalized_queries:
+            for nq in normalized_queries:
+                if isinstance(nq, str) and nq.strip():
+                    c_chunks, c_sources, pinecone_timings = await self._retrieve_context(nq)
+                    context_chunks.extend(c_chunks)
+                    for src in c_sources:
+                        if src not in sources:
+                            sources.append(src)
+                    for k, v in pinecone_timings.items():
+                        timings[k] = timings.get(k, 0.0) + v
 
         (
             product_facts,
@@ -334,7 +341,7 @@ class RAGEngine:
             try:
                 lead = LeadData(phone=phone_number)
                 await self.telegram_service.send_lead(
-                    lead, context_info=f"Зібрано у чаті. Сесія: {session_id}"
+                    lead, context_info=f"Повідомлення клієнта: '{question}'. Сесія: {session_id}"
                 )
                 msg = "Дякую! Контакти успішно передано. Наш менеджер зв'яжеться з вами найближчим часом."
 
@@ -360,12 +367,15 @@ class RAGEngine:
             _chat_memory[session_id] = [
                 m for m in _chat_memory[session_id] if m.get("role") == "user"
             ]
-        normalized_query = intent_data.get("normalized_faq_query")
+        normalized_queries = intent_data.get("normalized_faq_queries", [])
 
         context_chunks: list[str] = []
 
-        if intent_data.get("intent") in ["faq", "hybrid"] and normalized_query:
-            context_chunks, _, _ = await self._retrieve_context(str(normalized_query))
+        if intent_data.get("intent") in ["faq", "hybrid"] and normalized_queries:
+            for nq in normalized_queries:
+                if isinstance(nq, str) and nq.strip():
+                    c_chunks, _, _ = await self._retrieve_context(nq)
+                    context_chunks.extend(c_chunks)
 
         (
             product_facts,
