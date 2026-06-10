@@ -44,19 +44,20 @@ class RAGEngine:
 
 Поточний запит: "{question}"
 
-Твоє завдання — повернути JSON з полями: "intent", "product_name", "strict_query", "broad_query", "normalized_faq_queries" (це має бути масив рядків).
+Твоє завдання — повернути JSON з полями: "intent", "product_name", "strict_query", "broad_query", "category_query", "normalized_faq_queries" (це має бути масив рядків).
 
 ПРАВИЛА:
 1. Якщо клієнт вказує КОНКРЕТНУ назву моделі (наприклад "Acer CZ342CUR"):
-   -> {{"intent": "product", "product_name": "Точна назва", "strict_query": null, "broad_query": null, "normalized_faq_queries": []}}
+   -> {{"intent": "product", "product_name": "Точна назва", "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": []}}
 2. Якщо клієнт задає цінові рамки ("15000-20000"), просить кілька товарів або вказує загальну категорію з характеристиками ("бездротова ігрова мишка Logitech G Pro"):
-   -> {{"intent": "search", "product_name": null, "strict_query": "повний комерційний запит з прикметниками (наприклад 'бездротова ігрова мишка Logitech G Pro')", "broad_query": "МАКСИМУМ 1-3 найважливіших слова: тільки бренд і базова модель, або тільки категорія (наприклад 'Logitech G Pro' або 'мишка'). Чим коротше, тим краще!", "normalized_faq_queries": []}}
+   -> {{"intent": "search", "product_name": null, "strict_query": "повний комерційний запит з прикметниками (наприклад 'бездротова ігрова мишка Logitech G Pro')", "broad_query": "МАКСИМУМ 1-3 найважливіших слова: тільки бренд і базова модель, або тільки категорія (наприклад 'Logitech G Pro' або 'мишка'). Чим коротше, тим краще!", "category_query": "ТІЛЬКИ базова категорія ОДНИМ СЛОВОМ (наприклад 'мишка', 'ноутбук', 'монітор', 'клавіатура')", "normalized_faq_queries": []}}
 3. Якщо клієнт використовує займенники ("цей", "він") або задає уточнююче питання ВИКЛЮЧНО про характеристики (без вказівки бренду):
    -> Знайди останню модель в Історії. Intent має бути "product".
 4. Якщо клієнт явно висловлює бажання КУПИТИ або ОФОРМИТИ ЗАМОВЛЕННЯ:
-   -> {{"intent": "checkout", "product_name": "ЗНАЙДЕНА_НАЗВА_З_ІСТОРІЇ", "strict_query": null, "broad_query": null, "normalized_faq_queries": []}}
+   -> {{"intent": "checkout", "product_name": "ЗНАЙДЕНА_НАЗВА_З_ІСТОРІЇ", "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": []}}
 5. КРИТИЧНО: Запити про доставку, оплату, гарантію або розстрочку (навіть якщо вони комбіновані або стосуються конкретного товару, тобто інтент "product"):
-   -> {{"intent": "hybrid" або "faq", "product_name": "назва з історії (якщо є)", "strict_query": null, "broad_query": null, "normalized_faq_queries": ["оплата частинами", "доставка"]}} (розбий комбіноване питання на окремі теми). Навіть якщо інтент "product", але є питання про оплату/доставку — обов'язково заповни масив "normalized_faq_queries".
+   -> {{"intent": "hybrid" або "faq", "product_name": "назва з історії (якщо є)", "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": ["оплата частинами", "доставка"]}} (розбий комбіноване питання на окремі теми). Навіть якщо інтент "product", але є питання про оплату/доставку — обов'язково заповни масив "normalized_faq_queries".
+6. КРИТИЧНО: Якщо інтент "product" або "search" (тобто клієнт шукає товар), поле "normalized_faq_queries" має бути СУВОРО порожнім масивом []. Ніколи не вписуй туди пошуковий запит (наприклад, "ігрові клавіатури"), це зламає FAQ-систему!
 
 Відповідай ЛИШЕ валідним JSON."""
 
@@ -186,9 +187,17 @@ class RAGEngine:
                         f"КРИТИЧНО: Якщо товар 'В наявності' - 1-3 дні. 'Під замовлення' - 14-20 днів. ПОСИЛАННЯ В ТЕКСТ НЕ ПИСАТИ!"
                     )
                 else:
-                    system_instructions.append(f"Інформація: товар '{product_name_str}' відсутній.")
+                    # ДИНАМІЧНИЙ FALLBACK: Товар не знайдено скрапером, провалюємося в search
+                    logger.info(
+                        "Product not found by price_comparator, falling back to search cascade",
+                        product=product_name_str,
+                    )
+                    intent_type = "search"
+                    intent_data["strict_query"] = product_name_str
+                    intent_data["broad_query"] = product_name_str
+                    # category_query залишається таким, як його міг заповнити LLM, або порожнім
 
-        elif intent_type == "search":
+        if intent_type == "search":
             strict_term = str(
                 intent_data.get("strict_query")
                 or intent_data.get("search_term")
@@ -196,6 +205,7 @@ class RAGEngine:
                 or ""
             ).strip()
             broad_term = str(intent_data.get("broad_query") or "").strip()
+            category_term = str(intent_data.get("category_query") or "").strip()
 
             woo_products = []
             if strict_term:
@@ -204,14 +214,30 @@ class RAGEngine:
                     strict_term, limit=3
                 )
 
-            is_fallback = False
+            is_fallback_broad = False
+            is_fallback_category = False
+
             if not woo_products and broad_term and broad_term != strict_term:
                 logger.info("Strict search failed, trying fallback broad search", query=broad_term)
                 woo_products = await self.price_comparator.woo_service.search_products_async(
                     broad_term, limit=3
                 )
                 if woo_products:
-                    is_fallback = True
+                    is_fallback_broad = True
+
+            if (
+                not woo_products
+                and category_term
+                and category_term not in [strict_term, broad_term]
+            ):
+                logger.info(
+                    "Broad search failed, trying fallback category search", query=category_term
+                )
+                woo_products = await self.price_comparator.woo_service.search_products_async(
+                    category_term, limit=3
+                )
+                if woo_products:
+                    is_fallback_category = True
 
             search_facts: list[str] = []
             if woo_products:
@@ -226,7 +252,12 @@ class RAGEngine:
                 )
                 product_facts.append("\n".join(search_facts))
 
-                if is_fallback:
+                if is_fallback_category:
+                    system_instructions.append(
+                        f"Бекенд не знайшов точної моделі, але знайшов альтернативи за широкою категорією '{category_term}'. "
+                        f"ОБОВ'ЯЗКОВО скажи: 'На жаль, точної моделі зараз немає, але подивіться на ці схожі варіанти:' і розкажи про знайдені товари."
+                    )
+                elif is_fallback_broad:
                     system_instructions.append(
                         f"Бекенд не знайшов точної моделі для запиту '{strict_term}', але знайшов альтернативи за ширшим запитом '{broad_term}'. "
                         f"ОБОВ'ЯЗКОВО скажи: 'На жаль, точної моделі зараз немає, але подивіться на ці схожі варіанти:' і розкажи про знайдені товари."
@@ -234,7 +265,7 @@ class RAGEngine:
             else:
                 requires_lead = True
                 system_instructions.append(
-                    f"Інформація: за запитом '{strict_term}' нічого не знайдено. Запропонуй клієнту залишити номер телефону, щоб менеджер підібрав аналог."
+                    "Інформація: за запитом нічого не знайдено. Запропонуй клієнту залишити номер телефону, щоб менеджер підібрав аналог."
                 )
 
         return product_facts, system_instructions, extracted_links, requires_lead
