@@ -14,8 +14,8 @@ class WooService:
         self.woo_ck = settings.woo_ck
         self.woo_cs = settings.woo_cs
         self.base_url = "https://digitaldreams.com.ua/wp-json/wc/v3/products"
-        # Жорсткий таймаут: 2 сек на з'єднання, 5 сек на отримання даних
-        self.timeout = httpx.Timeout(5.0, connect=2.0)
+        # Жорсткий таймаут: 1 сек на з'єднання, 3 сек на отримання даних
+        self.timeout = httpx.Timeout(3.0, connect=1.0)
 
     async def search_product_async(self, search_term: str) -> WooProduct | None:
         """Асинхронний пошук товару у WooCommerce за назвою або SKU."""

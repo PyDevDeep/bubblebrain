@@ -44,19 +44,19 @@ class RAGEngine:
 
 Поточний запит: "{question}"
 
-Твоє завдання — повернути JSON з полями: "intent", "product_name", "search_term", "normalized_faq_queries" (це має бути масив рядків).
+Твоє завдання — повернути JSON з полями: "intent", "product_name", "strict_query", "broad_query", "normalized_faq_queries" (це має бути масив рядків).
 
 ПРАВИЛА:
 1. Якщо клієнт вказує КОНКРЕТНУ назву моделі (наприклад "Acer CZ342CUR"):
-   -> {{"intent": "product", "product_name": "Точна назва", "search_term": null, "normalized_faq_queries": []}}
+   -> {{"intent": "product", "product_name": "Точна назва", "strict_query": null, "broad_query": null, "normalized_faq_queries": []}}
 2. Якщо клієнт задає цінові рамки ("15000-20000"), просить кілька товарів або вказує загальну категорію з характеристиками ("бездротова ігрова мишка Logitech G Pro"):
-   -> {{"intent": "search", "product_name": null, "search_term": "повний комерційний пошуковий запит (наприклад, 'бездротова ігрова мишка Logitech G Pro', 'монітор Samsung Odyssey'). Зберігай бренд та важливі характеристики, не обрізай до одного слова!", "normalized_faq_queries": []}}
+   -> {{"intent": "search", "product_name": null, "strict_query": "повний комерційний запит з прикметниками (наприклад 'бездротова ігрова мишка Logitech G Pro')", "broad_query": "МАКСИМУМ 1-3 найважливіших слова: тільки бренд і базова модель, або тільки категорія (наприклад 'Logitech G Pro' або 'мишка'). Чим коротше, тим краще!", "normalized_faq_queries": []}}
 3. Якщо клієнт використовує займенники ("цей", "він") або задає уточнююче питання ВИКЛЮЧНО про характеристики (без вказівки бренду):
    -> Знайди останню модель в Історії. Intent має бути "product".
 4. Якщо клієнт явно висловлює бажання КУПИТИ або ОФОРМИТИ ЗАМОВЛЕННЯ:
-   -> {{"intent": "checkout", "product_name": "ЗНАЙДЕНА_НАЗВА_З_ІСТОРІЇ", "search_term": null, "normalized_faq_queries": []}}
+   -> {{"intent": "checkout", "product_name": "ЗНАЙДЕНА_НАЗВА_З_ІСТОРІЇ", "strict_query": null, "broad_query": null, "normalized_faq_queries": []}}
 5. КРИТИЧНО: Запити про доставку, оплату, гарантію або розстрочку (навіть якщо вони комбіновані або стосуються конкретного товару, тобто інтент "product"):
-   -> {{"intent": "hybrid" або "faq", "product_name": "назва з історії (якщо є)", "search_term": null, "normalized_faq_queries": ["оплата частинами", "доставка"]}} (розбий комбіноване питання на окремі теми). Навіть якщо інтент "product", але є питання про оплату/доставку — обов'язково заповни масив "normalized_faq_queries".
+   -> {{"intent": "hybrid" або "faq", "product_name": "назва з історії (якщо є)", "strict_query": null, "broad_query": null, "normalized_faq_queries": ["оплата частинами", "доставка"]}} (розбий комбіноване питання на окремі теми). Навіть якщо інтент "product", але є питання про оплату/доставку — обов'язково заповни масив "normalized_faq_queries".
 
 Відповідай ЛИШЕ валідним JSON."""
 
@@ -107,10 +107,23 @@ class RAGEngine:
 
         intent_type = intent_data.get("intent", "faq")
         product_name = intent_data.get("product_name")
-        if not product_name and intent_type in ["product", "checkout"]:
+        # РЕАЛІЗАЦІЯ ВІДНОВЛЕННЯ КОНТЕКСТУ З ІСТОРІЇ (Блокування плейсхолдерів)
+        if (not product_name or product_name == "ЗНАЙДЕНА_НАЗВА_З_ІСТОРІЇ") and intent_type in [
+            "product",
+            "checkout",
+        ]:
             for msg in reversed(history):
-                if msg["role"] == "bot" and "Товар" in msg["content"]:
-                    pass  # Логіка витягнення назви, якщо потрібно
+                content = msg.get("content", "")
+                # Жорстка прив'язка до маркера "Товар", який генерує бекенд
+                if msg.get("role") == "bot" and "Товар" in content:
+                    # Шукаємо назву товару в одинарних або подвійних лапках
+                    match = re.search(r"['\"«»]([^'\"«»]+)['\"«»]", content)
+                    if match:
+                        product_name = match.group(1)
+                        logger.info(
+                            "Recovered product name from bot history", product_name=product_name
+                        )
+                        break
 
         # 1. ОБРОБКА КОНКРЕТНОГО ТОВАРУ (Consultation & Checkout)
         if intent_type in ["product", "hybrid", "checkout"] and product_name:
@@ -176,32 +189,53 @@ class RAGEngine:
                     system_instructions.append(f"Інформація: товар '{product_name_str}' відсутній.")
 
         elif intent_type == "search":
-            search_term = str(
-                intent_data.get("search_term") or intent_data.get("search_query") or ""
-            )
-            if search_term:
-                logger.info("Search intent detected", query=search_term)
+            strict_term = str(
+                intent_data.get("strict_query")
+                or intent_data.get("search_term")
+                or intent_data.get("search_query")
+                or ""
+            ).strip()
+            broad_term = str(intent_data.get("broad_query") or "").strip()
+
+            woo_products = []
+            if strict_term:
+                logger.info("Search intent detected (strict)", query=strict_term)
                 woo_products = await self.price_comparator.woo_service.search_products_async(
-                    search_term, limit=3
+                    strict_term, limit=3
                 )
 
-                search_facts: list[str] = []
+            is_fallback = False
+            if not woo_products and broad_term and broad_term != strict_term:
+                logger.info("Strict search failed, trying fallback broad search", query=broad_term)
+                woo_products = await self.price_comparator.woo_service.search_products_async(
+                    broad_term, limit=3
+                )
                 if woo_products:
-                    search_facts.append("Знайдено у нашому магазині:")
-                    for p in woo_products:
-                        status = "В наявності" if p.stock_status == "instock" else "Під замовлення"
-                        search_facts.append(f"- {p.name}: {p.price_uah} грн, статус: {status}")
-                        if p.url:
-                            extracted_links.append({"text": p.name, "url": p.url})
-                    search_facts.append(
-                        "ВКАЗІВКА: Посилання вже згенеровані системою. Не дублюй їх у тексті."
-                    )
-                    product_facts.append("\n".join(search_facts))
-                else:
-                    requires_lead = True
+                    is_fallback = True
+
+            search_facts: list[str] = []
+            if woo_products:
+                search_facts.append("Знайдено у нашому магазині:")
+                for p in woo_products:
+                    status = "В наявності" if p.stock_status == "instock" else "Під замовлення"
+                    search_facts.append(f"- {p.name}: {p.price_uah} грн, статус: {status}")
+                    if p.url:
+                        extracted_links.append({"text": p.name, "url": p.url})
+                search_facts.append(
+                    "ВКАЗІВКА: Посилання вже згенеровані системою. Не дублюй їх у тексті."
+                )
+                product_facts.append("\n".join(search_facts))
+
+                if is_fallback:
                     system_instructions.append(
-                        f"Інформація: за запитом '{search_term}' нічого не знайдено. Запропонуй клієнту залишити номер телефону, щоб менеджер підібрав аналог."
+                        f"Бекенд не знайшов точної моделі для запиту '{strict_term}', але знайшов альтернативи за ширшим запитом '{broad_term}'. "
+                        f"ОБОВ'ЯЗКОВО скажи: 'На жаль, точної моделі зараз немає, але подивіться на ці схожі варіанти:' і розкажи про знайдені товари."
                     )
+            else:
+                requires_lead = True
+                system_instructions.append(
+                    f"Інформація: за запитом '{strict_term}' нічого не знайдено. Запропонуй клієнту залишити номер телефону, щоб менеджер підібрав аналог."
+                )
 
         return product_facts, system_instructions, extracted_links, requires_lead
 
@@ -242,6 +276,8 @@ class RAGEngine:
 
         if intent_data.get("intent") == "search":
             _chat_memory[session_id] = []
+            history_context = ""
+            history = []
         normalized_queries = intent_data.get("normalized_faq_queries", [])
         if isinstance(normalized_queries, str):
             normalized_queries = [normalized_queries]
@@ -352,6 +388,8 @@ class RAGEngine:
         # САНІТИЗАЦІЯ ПАМ'ЯТІ ПРИ ЗМІНІ ТЕМИ ПОШУКУ
         if intent_data.get("intent") == "search":
             _chat_memory[session_id] = []
+            history_context = ""
+            history = []
         normalized_queries = intent_data.get("normalized_faq_queries", [])
         if isinstance(normalized_queries, str):
             normalized_queries = [normalized_queries]
@@ -394,7 +432,7 @@ class RAGEngine:
 
         # Спочатку віддаємо фронтенду метадані (посилання та прапорці)
         meta_payload = json.dumps({"links": extracted_links, "requires_lead": requires_lead})
-        yield f"[METADATA] {meta_payload}"
+        yield f"[METADATA] {meta_payload}\n\n"
 
         stream = self.openai_service.stream_chat_completion(
             system_prompt=RAG_SYSTEM_PROMPT,
