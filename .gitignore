@@ -28,3 +28,4 @@ logs/*
 !logs/.gitkeep
 .claude/
 app/app.log
+llm_LOG.txt
