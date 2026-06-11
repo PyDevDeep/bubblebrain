@@ -7,6 +7,7 @@ from typing import cast
 from app.core.config import Settings
 from app.core.logging_config import get_logger
 from app.schemas.chat import LeadData, RAGResponse
+from app.services.category_manager import CategoryManager
 from app.services.openai_service import OpenAIService
 from app.services.price_comparator import PriceComparator
 from app.services.telegram_service import TelegramService
@@ -25,12 +26,14 @@ class RAGEngine:
         vector_service: VectorService,
         price_comparator: PriceComparator,
         telegram_service: TelegramService,
+        category_manager: CategoryManager,
         settings: Settings,
     ) -> None:
         self.openai_service = openai_service
         self.vector_service = vector_service
         self.price_comparator = price_comparator
         self.telegram_service = telegram_service
+        self.category_manager = category_manager
         self.settings = settings
         self.top_k = settings.top_k_results
         self.threshold = settings.similarity_threshold
@@ -38,6 +41,7 @@ class RAGEngine:
     async def detect_intent(
         self, question: str, history_context: str
     ) -> dict[str, str | None | list[str]]:
+        categories_str = self.category_manager.get_categories_string()
         prompt = f"""Ти — суворий аналізатор намірів клієнта магазину техніки.
 Історія розмови:
 {history_context if history_context else "Немає"}
@@ -48,16 +52,16 @@ class RAGEngine:
 
 ПРАВИЛА:
 1. Якщо клієнт вказує КОНКРЕТНУ назву моделі (наприклад "Acer CZ342CUR"):
-   -> {{"intent": "product", "product_name": "Точна назва", "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": []}}
+   -> {{"intent": "product", "product_name": "Точна назва", "strict_query": null, "broad_query": null, "category_query": "Обери ТОЧНУ назву категорії зі списку нижче. Якщо не впевнений - null", "normalized_faq_queries": []}}
 2. Якщо клієнт задає цінові рамки ("15000-20000"), просить кілька товарів або вказує загальну категорію з характеристиками ("бездротова ігрова мишка Logitech G Pro"):
-   -> {{"intent": "search", "product_name": null, "strict_query": "повний комерційний запит з прикметниками (наприклад 'бездротова ігрова мишка Logitech G Pro')", "broad_query": "МАКСИМУМ 1-3 найважливіших слова: тільки бренд і базова модель, або тільки категорія (наприклад 'Logitech G Pro' або 'мишка'). Чим коротше, тим краще!", "category_query": "ТІЛЬКИ базова категорія ОДНИМ СЛОВОМ (наприклад 'мишка', 'ноутбук', 'монітор', 'клавіатура')", "normalized_faq_queries": []}}
+   -> {{"intent": "search", "product_name": null, "strict_query": "повний комерційний запит з прикметниками (наприклад 'бездротова ігрова мишка Logitech G Pro')", "broad_query": "МАКСИМУМ 1-3 найважливіших слова: тільки бренд і базова модель, або тільки категорія (наприклад 'Logitech G Pro' або 'мишка'). Чим коротше, тим краще!", "category_query": "Обери ТОЧНУ назву категорії зі списку нижче. Якщо не впевнений - null", "normalized_faq_queries": []}}
 3. Якщо клієнт використовує займенники ("цей", "він") або задає уточнююче питання ВИКЛЮЧНО про характеристики (без вказівки бренду):
    -> Знайди останню модель в Історії. Intent має бути "product".
 4. Якщо клієнт явно висловлює бажання КУПИТИ або ОФОРМИТИ ЗАМОВЛЕННЯ:
    -> {{"intent": "checkout", "product_name": "ЗНАЙДЕНА_НАЗВА_З_ІСТОРІЇ", "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": []}}
-5. КРИТИЧНО: Запити про доставку, оплату, гарантію або розстрочку (навіть якщо вони комбіновані або стосуються конкретного товару, тобто інтент "product"):
-   -> {{"intent": "hybrid" або "faq", "product_name": "назва з історії (якщо є)", "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": ["оплата частинами", "доставка"]}} (розбий комбіноване питання на окремі теми). Навіть якщо інтент "product", але є питання про оплату/доставку — обов'язково заповни масив "normalized_faq_queries".
-6. КРИТИЧНО: Якщо інтент "product" або "search" (тобто клієнт шукає товар), поле "normalized_faq_queries" має бути СУВОРО порожнім масивом []. Ніколи не вписуй туди пошуковий запит (наприклад, "ігрові клавіатури"), це зламає FAQ-систему!
+5. КРИТИЧНО (Гібрид): НАЯВНІСТЬ будь-якого питання про доставку, оплату, гарантію або розстрочку (навіть якщо вони комбіновані або стосуються конкретного товару) ПРИМУСОВО змінює інтент на "hybrid". Тільки так ти можеш повернути FAQ-запити.
+   -> {{"intent": "hybrid", "product_name": "назва моделі (якщо є)", "strict_query": "комерційний запит (якщо є)", "broad_query": "короткий запит (якщо є)", "category_query": "ТОЧНА назва категорії", "normalized_faq_queries": ["оплата частинами", "доставка"]}}
+6. КРИТИЧНО: Для "category_query" обери ТОЧНУ назву з цього списку: [{categories_str}]. Якщо нічого не підходить — null.
 
 Відповідай ЛИШЕ валідним JSON."""
 
@@ -233,11 +237,20 @@ class RAGEngine:
                 logger.info(
                     "Broad search failed, trying fallback category search", query=category_term
                 )
-                woo_products = await self.price_comparator.woo_service.search_products_async(
-                    category_term, limit=3
-                )
-                if woo_products:
-                    is_fallback_category = True
+                category_id = self.category_manager.get_category_id(category_term)
+                if category_id:
+                    woo_products = (
+                        await self.price_comparator.woo_service.search_products_by_category_async(
+                            category_id, limit=3
+                        )
+                    )
+                    if woo_products:
+                        is_fallback_category = True
+                else:
+                    logger.info(
+                        "Fallback category not found in cache, skipping",
+                        category_term=category_term,
+                    )
 
             search_facts: list[str] = []
             if woo_products:
@@ -305,10 +318,17 @@ class RAGEngine:
 
         intent_data = await self.detect_intent(question, history_context)
 
-        if intent_data.get("intent") == "search":
+        intent_type = intent_data.get("intent", "faq")
+
+        # Програмне обнулення FAQ для точних товарів та пошуку
+        if intent_type in ["product", "search", "checkout"]:
+            intent_data["normalized_faq_queries"] = []
+
+        if intent_type == "search":
             _chat_memory[session_id] = []
             history_context = ""
             history = []
+
         normalized_queries = intent_data.get("normalized_faq_queries", [])
         if isinstance(normalized_queries, str):
             normalized_queries = [normalized_queries]

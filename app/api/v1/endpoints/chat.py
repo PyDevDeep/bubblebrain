@@ -10,6 +10,7 @@ from app.core.security import verify_api_key
 from app.middleware.rate_limiter import limiter
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.cache_service import CacheService
+from app.services.category_manager import CategoryManager
 from app.services.openai_service import OpenAIService
 from app.services.price_comparator import PriceComparator
 from app.services.rag_engine import RAGEngine
@@ -32,12 +33,14 @@ def get_rag_engine(settings: Settings = Depends(get_settings)) -> RAGEngine:
 
     price_comparator = PriceComparator(woo_service, scraper_service, cache_service, settings)
     telegram_service = TelegramService(settings)
+    category_manager = CategoryManager()
 
     return RAGEngine(
         openai_service=openai_service,
         vector_service=vector_service,
         price_comparator=price_comparator,
         telegram_service=telegram_service,
+        category_manager=category_manager,
         settings=settings,
     )
 
