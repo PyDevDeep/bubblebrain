@@ -28,8 +28,9 @@ WORKDIR /app
 # Копіюємо віртуальне середовище з першого етапу
 COPY --from=builder ${VIRTUAL_ENV} ${VIRTUAL_ENV}
 
-# Копіюємо вихідний код
+# Копіюємо вихідний код та дані
 COPY ./app ./app
+COPY ./data ./data
 
 EXPOSE 8000
 
