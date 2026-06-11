@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Для виходу з MVP необхідно:
     # Шлях А: Винести APScheduler в ізольований Docker-контейнер (окремий процес).
     # Шлях Б: Використати розподілене блокування (Redis Lock або APScheduler RedisJobStore).
-    scheduler = AsyncIOScheduler()
+    scheduler = AsyncIOScheduler()  # type: ignore
     scheduler.add_job(  # type: ignore[reportUnknownMemberType]
         export_categories_to_csv,
         trigger=CronTrigger(hour=3, minute=0),
@@ -52,14 +52,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         name="Export WooCommerce categories to CSV",
         replace_existing=True,
     )
-    scheduler.start()
+    scheduler.start()  # type: ignore
     logger.info("APScheduler started: category export scheduled at 03:00")
 
     yield
 
     # on_shutdown
     logger.info("Application shutting down")
-    scheduler.shutdown(wait=False)
+    scheduler.shutdown(wait=False)  # type: ignore
     if settings.sentry_dsn:
         sentry_sdk.flush()
 
