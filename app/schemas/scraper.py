@@ -7,6 +7,8 @@ class WooProduct(BaseModel):
     price_uah: float | None
     url: str
     stock_status: str | None = "instock"
+    attributes: dict[str, str] = {}
+    short_description: str | None = None
 
 
 class DatacompProduct(BaseModel):
@@ -35,3 +37,5 @@ class PriceComparisonResult(BaseModel):
     datacomp_url: str | None = None
     hotline_url: str | None = None
     woo_url: str | None = None
+    attributes: dict[str, str] = {}
+    short_description: str | None = None

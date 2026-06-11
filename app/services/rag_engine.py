@@ -197,6 +197,11 @@ class RAGEngine:
                         f"Дані: Товар '{result.product_name}', {result.woo_price} грн. Умови: {result.availability_status}.\n"
                         f"КРИТИЧНО: Якщо товар 'В наявності' - 1-3 дні. 'Під замовлення' - 14-20 днів. ПОСИЛАННЯ В ТЕКСТ НЕ ПИСАТИ!"
                     )
+                    if result.attributes:
+                        attr_str = "\n".join([f"- {k}: {v}" for k, v in result.attributes.items()])
+                        product_facts.append(f"Характеристики:\n{attr_str}")
+                    if result.short_description:
+                        product_facts.append(f"Опис:\n{result.short_description}")
                 else:
                     # ДИНАМІЧНИЙ FALLBACK: Товар не знайдено скрапером, провалюємося в search
                     logger.info(
@@ -263,6 +268,13 @@ class RAGEngine:
                 for p in woo_products:
                     status = "В наявності" if p.stock_status == "instock" else "Під замовлення"
                     search_facts.append(f"- {p.name}: {p.price_uah} грн, статус: {status}")
+
+                    if p.attributes:
+                        # TODO: У майбутньому додати список пріоритетних ключів (priority_keys = ['Процесор', 'Екран', 'Пам\'ять']), щоб гарантовано витягувати їх першими
+                        top_attrs = list(p.attributes.items())[:5]
+                        attr_str = ", ".join([f"{k}: {v}" for k, v in top_attrs])
+                        search_facts.append(f"  Характеристики: {attr_str}")
+
                     if p.url:
                         extracted_links.append({"text": p.name, "url": p.url})
                 search_facts.append(

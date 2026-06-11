@@ -68,6 +68,8 @@ class PriceComparator:
                 needs_alert=False,
                 datacomp_url=None,
                 woo_url=woo_result.url,
+                attributes=woo_result.attributes,
+                short_description=woo_result.short_description,
             )
 
         if not sku:
@@ -79,6 +81,8 @@ class PriceComparator:
                 needs_alert=True,
                 alert_reason="scraper_failed_no_sku",
                 woo_url=woo_result.url,
+                attributes=woo_result.attributes,
+                short_description=woo_result.short_description,
             )
 
         dc_price_uah = None
@@ -143,4 +147,6 @@ class PriceComparator:
             alert_reason=alert_reason,
             datacomp_url=dc_url,
             woo_url=woo_result.url,
+            attributes=woo_result.attributes,
+            short_description=woo_result.short_description,
         )
