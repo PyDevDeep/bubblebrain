@@ -292,8 +292,22 @@ class ChatWidget {
               continue;
             }
 
-            pendingText += data;
-            if (!isUpdating) {
+            try {
+              if (data.trim() !== "") {
+                const parsed = JSON.parse(data);
+                if (parsed.token) {
+                  pendingText += parsed.token;
+                }
+              }
+            } catch (e) {
+              console.error(
+                "BubbleBrain Stream: Failed to parse chunk",
+                e,
+                data,
+              );
+            }
+
+            if (!isUpdating && pendingText !== "") {
               isUpdating = true;
               requestAnimationFrame(updateDOM);
             }

@@ -6,7 +6,7 @@ from typing import cast
 
 from app.core.config import Settings
 from app.core.logging_config import get_logger
-from app.schemas.chat import LeadData, RAGResponse
+from app.schemas.chat import LeadData, LinkItem, RAGResponse
 from app.services.category_manager import CategoryManager
 from app.services.openai_service import OpenAIService
 from app.services.price_comparator import PriceComparator
@@ -177,9 +177,12 @@ class RAGEngine:
                 requires_lead = True
                 if result.woo_url:
                     extracted_links.append({"text": "Оформити замовлення", "url": result.woo_url})
+                extracted_links.append(
+                    {"text": "Написати в Instagram", "url": self.settings.instagram_url}
+                )
                 system_instructions.append(
                     f"Клієнт хоче купити '{product_name_str}'. ТВОЯ ЗАДАЧА:\n"
-                    f"Скажи, що він може оформити замовлення самостійно (кнопка вже згенерована) АБО просто залишити номер телефону тут, і менеджер все оформить сам."
+                    f"Скажи, що він може оформити замовлення самостійно (кнопка вже згенерована) АБО просто залишити номер телефону тут, і менеджер все оформить сам. Також запропонуй написати нам в Інстаграм."
                 )
 
             # Якщо все добре і це просто консультація
@@ -267,13 +270,14 @@ class RAGEngine:
                 search_facts.append("Знайдено у нашому магазині:")
                 for p in woo_products:
                     status = "В наявності" if p.stock_status == "instock" else "Під замовлення"
-                    search_facts.append(f"- {p.name}: {p.price_uah} грн, статус: {status}")
+                    search_facts.append(
+                        f"- Назва: {p.name}\n  Ціна: {p.price_uah} грн\n  Статус: {status}"
+                    )
 
                     if p.attributes:
-                        # TODO: У майбутньому додати список пріоритетних ключів (priority_keys = ['Процесор', 'Екран', 'Пам\'ять']), щоб гарантовано витягувати їх першими
                         top_attrs = list(p.attributes.items())[:5]
-                        attr_str = ", ".join([f"{k}: {v}" for k, v in top_attrs])
-                        search_facts.append(f"  Характеристики: {attr_str}")
+                        attr_str = "\n".join([f"    * {k}: {v}" for k, v in top_attrs])
+                        search_facts.append(f"  Характеристики:\n{attr_str}")
 
                     if p.url:
                         extracted_links.append({"text": p.name, "url": p.url})
@@ -323,7 +327,7 @@ class RAGEngine:
                     answer=msg,
                     sources=[],
                     has_context=False,
-                    links=[{"text": "Написати в Instagram", "url": "https://instagram.com/"}],
+                    links=[LinkItem(text="Написати в Instagram", url=self.settings.instagram_url)],
                     requires_lead=False,
                 )
             except Exception as e:
@@ -443,13 +447,13 @@ class RAGEngine:
                 meta_payload = json.dumps(
                     {
                         "links": [
-                            {"text": "Написати в Instagram", "url": "https://instagram.com/"}
+                            {"text": "Написати в Instagram", "url": self.settings.instagram_url}
                         ],
                         "requires_lead": False,
                     }
                 )
-                yield f"[METADATA] {meta_payload}\n\n"
-                yield msg
+                yield f"[METADATA] {meta_payload}"
+                yield json.dumps({"token": msg})
 
                 _chat_memory[session_id].append({"role": "user", "content": question})
                 _chat_memory[session_id].append({"role": "bot", "content": msg})
@@ -511,7 +515,7 @@ class RAGEngine:
 
         # Спочатку віддаємо фронтенду метадані (посилання та прапорці)
         meta_payload = json.dumps({"links": extracted_links, "requires_lead": requires_lead})
-        yield f"[METADATA] {meta_payload}\n\n"
+        yield f"[METADATA] {meta_payload}"
 
         stream = self.openai_service.stream_chat_completion(
             system_prompt=RAG_SYSTEM_PROMPT,
@@ -523,6 +527,6 @@ class RAGEngine:
         try:
             async for token in stream:
                 full_response += token
-                yield token
+                yield json.dumps({"token": token})
         finally:
             _chat_memory[session_id].append({"role": "bot", "content": full_response})
