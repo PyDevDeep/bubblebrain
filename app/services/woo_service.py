@@ -17,7 +17,9 @@ class WooService:
         # Жорсткий таймаут: 1 сек на з'єднання, 3 сек на отримання даних
         self.timeout = httpx.Timeout(3.0, connect=1.0)
 
-    async def search_product_async(self, search_term: str) -> WooProduct | None:
+    async def search_product_async(
+        self, search_term: str, category_id: int | None = None
+    ) -> WooProduct | None:
         """Асинхронний пошук товару у WooCommerce за назвою або SKU."""
         params: dict[str, str | int] = {
             "search": search_term,
@@ -25,6 +27,8 @@ class WooService:
             "consumer_secret": self.woo_cs,
             "per_page": 1,
         }
+        if category_id is not None:
+            params["category"] = category_id
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
@@ -66,7 +70,9 @@ class WooService:
 
         return None
 
-    async def search_products_async(self, search_term: str, limit: int = 5) -> list[WooProduct]:
+    async def search_products_async(
+        self, search_term: str, category_id: int | None = None, limit: int = 5
+    ) -> list[WooProduct]:
         """Асинхронний пошук кількох товарів у WooCommerce за назвою."""
         params: dict[str, str | int] = {
             "search": search_term,
@@ -74,6 +80,8 @@ class WooService:
             "consumer_secret": self.woo_cs,
             "per_page": limit,
         }
+        if category_id is not None:
+            params["category"] = category_id
 
         products: list[WooProduct] = []
         async with httpx.AsyncClient(timeout=self.timeout) as client:

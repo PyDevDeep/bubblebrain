@@ -130,6 +130,11 @@ class RAGEngine:
                         )
                         break
 
+        category_term = str(intent_data.get("category_query") or "").strip()
+        category_id = (
+            self.category_manager.get_category_id(category_term) if category_term else None
+        )
+
         # 1. ОБРОБКА КОНКРЕТНОГО ТОВАРУ (Consultation & Checkout)
         if intent_type in ["product", "hybrid", "checkout"] and product_name:
             is_checkout = intent_type == "checkout"
@@ -141,7 +146,9 @@ class RAGEngine:
             )
 
             # Виклик з ігноруванням кешу, якщо це чекаут
-            result = await self.price_comparator.compare(product_name_str, is_checkout=is_checkout)
+            result = await self.price_comparator.compare(
+                product_name_str, is_checkout=is_checkout, category_id=category_id
+            )
 
             if result.needs_alert:
                 requires_lead = True
@@ -209,36 +216,37 @@ class RAGEngine:
                 or ""
             ).strip()
             broad_term = str(intent_data.get("broad_query") or "").strip()
-            category_term = str(intent_data.get("category_query") or "").strip()
 
             woo_products = []
             if strict_term:
-                logger.info("Search intent detected (strict)", query=strict_term)
+                logger.info(
+                    "Search intent detected (strict)", query=strict_term, category_id=category_id
+                )
                 woo_products = await self.price_comparator.woo_service.search_products_async(
-                    strict_term, limit=3
+                    strict_term, category_id=category_id, limit=3
                 )
 
             is_fallback_broad = False
             is_fallback_category = False
 
             if not woo_products and broad_term and broad_term != strict_term:
-                logger.info("Strict search failed, trying fallback broad search", query=broad_term)
+                logger.info(
+                    "Strict search failed, trying fallback broad search",
+                    query=broad_term,
+                    category_id=category_id,
+                )
                 woo_products = await self.price_comparator.woo_service.search_products_async(
-                    broad_term, limit=3
+                    broad_term, category_id=category_id, limit=3
                 )
                 if woo_products:
                     is_fallback_broad = True
 
-            if (
-                not woo_products
-                and category_term
-                and category_term not in [strict_term, broad_term]
-            ):
-                logger.info(
-                    "Broad search failed, trying fallback category search", query=category_term
-                )
-                category_id = self.category_manager.get_category_id(category_term)
-                if category_id:
+            if not woo_products:
+                if category_id is not None:
+                    logger.info(
+                        "Text search failed or empty, trying fallback category search",
+                        category_id=category_id,
+                    )
                     woo_products = (
                         await self.price_comparator.woo_service.search_products_by_category_async(
                             category_id, limit=3
@@ -247,10 +255,7 @@ class RAGEngine:
                     if woo_products:
                         is_fallback_category = True
                 else:
-                    logger.info(
-                        "Fallback category not found in cache, skipping",
-                        category_term=category_term,
-                    )
+                    logger.info("Search cascade aborted: category_id is None")
 
             search_facts: list[str] = []
             if woo_products:

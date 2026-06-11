@@ -32,10 +32,19 @@ class PriceComparator:
             return "Під замовлення від постачальника (доставка 14-20 днів)"
         return "Уточнюється у постачальника"
 
-    async def compare(self, product_name: str, is_checkout: bool = False) -> PriceComparisonResult:
-        logger.info("Starting price comparison", product=product_name, is_checkout=is_checkout)
+    async def compare(
+        self, product_name: str, is_checkout: bool = False, category_id: int | None = None
+    ) -> PriceComparisonResult:
+        logger.info(
+            "Starting price comparison",
+            product=product_name,
+            is_checkout=is_checkout,
+            category_id=category_id,
+        )
 
-        woo_result = await self.woo_service.search_product_async(product_name)
+        woo_result = await self.woo_service.search_product_async(
+            product_name, category_id=category_id
+        )
 
         if not woo_result:
             return PriceComparisonResult(
