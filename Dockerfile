@@ -31,6 +31,7 @@ COPY --from=builder ${VIRTUAL_ENV} ${VIRTUAL_ENV}
 # Копіюємо вихідний код та дані
 COPY ./app ./app
 COPY ./data ./data
+COPY ./scripts ./scripts
 
 EXPOSE 8000
 
