@@ -450,10 +450,11 @@ class RAGEngine:
                             {"text": "Написати в Instagram", "url": self.settings.instagram_url}
                         ],
                         "requires_lead": False,
-                    }
+                    },
+                    ensure_ascii=False,
                 )
                 yield f"[METADATA] {meta_payload}"
-                yield json.dumps({"token": msg})
+                yield json.dumps({"token": msg}, ensure_ascii=False)
 
                 _chat_memory[session_id].append({"role": "user", "content": question})
                 _chat_memory[session_id].append({"role": "bot", "content": msg})
@@ -514,7 +515,9 @@ class RAGEngine:
         _chat_memory[session_id].append({"role": "user", "content": question})
 
         # Спочатку віддаємо фронтенду метадані (посилання та прапорці)
-        meta_payload = json.dumps({"links": extracted_links, "requires_lead": requires_lead})
+        meta_payload = json.dumps(
+            {"links": extracted_links, "requires_lead": requires_lead}, ensure_ascii=False
+        )
         yield f"[METADATA] {meta_payload}"
 
         stream = self.openai_service.stream_chat_completion(
@@ -527,6 +530,6 @@ class RAGEngine:
         try:
             async for token in stream:
                 full_response += token
-                yield json.dumps({"token": token})
+                yield json.dumps({"token": token}, ensure_ascii=False)
         finally:
             _chat_memory[session_id].append({"role": "bot", "content": full_response})
