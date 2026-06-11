@@ -107,3 +107,47 @@ class WooService:
                 )
 
         return products
+
+    async def search_products_by_category_async(
+        self, category_id: int, limit: int = 5
+    ) -> list[WooProduct]:
+        """Асинхронний пошук кількох товарів у WooCommerce за ID категорії."""
+        params: dict[str, str | int] = {
+            "category": category_id,
+            "consumer_key": self.woo_ck,
+            "consumer_secret": self.woo_cs,
+            "per_page": limit,
+        }
+
+        products: list[WooProduct] = []
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                resp = await client.get(self.base_url, params=params)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, list):
+                        for raw_item in cast(list[dict[str, Any]], data):
+                            if raw_item.get("price"):
+                                products.append(
+                                    WooProduct(
+                                        sku=str(raw_item.get("sku") or ""),
+                                        name=str(raw_item.get("name") or ""),
+                                        price_uah=float(raw_item.get("price") or 0.0),
+                                        url=str(raw_item.get("permalink") or ""),
+                                        stock_status=str(raw_item.get("stock_status") or "instock"),
+                                    )
+                                )
+            except httpx.TimeoutException:
+                logger.error("WooCommerce API Multi Search Timeout", category_id=category_id)
+            except httpx.RequestError as e:
+                logger.error(
+                    "WooCommerce API Multi Search Error", error=str(e), category_id=category_id
+                )
+            except Exception as e:
+                logger.error(
+                    "WooCommerce API Multi Search Unexpected Error",
+                    error=str(e),
+                    category_id=category_id,
+                )
+
+        return products
