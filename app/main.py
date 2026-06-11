@@ -3,6 +3,8 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import sentry_sdk
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[reportMissingTypeStubs]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[reportMissingTypeStubs]
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -15,6 +17,7 @@ from app.core.config import get_settings
 from app.core.logging_config import get_logger, setup_logging
 from app.middleware.rate_limiter import limiter
 from app.middleware.request_logging import RequestLoggingMiddleware
+from scripts.export_categories import export_categories_to_csv
 
 logger = get_logger(__name__)
 
@@ -35,10 +38,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     logger.info("Application started", env=settings.pinecone_environment)
 
+    # ТЕХНІЧНИЙ БОРГ (TECH DEBT):
+    # Поточна реалізація крон-задач працює в пам'яті (APScheduler) і ОБМЕЖЕНА 1 воркером (--workers 1).
+    # При збільшенні трафіку і кількості воркерів (наприклад, --workers 4), scheduler запуститься 4 рази.
+    # Для виходу з MVP необхідно:
+    # Шлях А: Винести APScheduler в ізольований Docker-контейнер (окремий процес).
+    # Шлях Б: Використати розподілене блокування (Redis Lock або APScheduler RedisJobStore).
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(  # type: ignore[reportUnknownMemberType]
+        export_categories_to_csv,
+        trigger=CronTrigger(hour=3, minute=0),
+        id="export_woo_categories",
+        name="Export WooCommerce categories to CSV",
+        replace_existing=True,
+    )
+    scheduler.start()
+    logger.info("APScheduler started: category export scheduled at 03:00")
+
     yield
 
     # on_shutdown
     logger.info("Application shutting down")
+    scheduler.shutdown(wait=False)
     if settings.sentry_dsn:
         sentry_sdk.flush()
 

@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -14,14 +15,41 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-
 # Ініціалізацію шляхів винесено на рівень модуля
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_FILE = OUTPUT_DIR / "categories.csv"
+TEMP_FILE = OUTPUT_DIR / "categories_temp.csv"
 
 
-async def export_categories_to_csv():
+def _write_csv_sync(categories: list[dict[str, Any]]) -> None:
+    """Синхронна функція запису у файл для виконання в окремому потоці."""
+    fieldnames = ["ID", "Name", "Slug", "Parent ID", "Count"]
+
+    try:
+        with open(TEMP_FILE, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for cat in categories:
+                writer.writerow(
+                    {
+                        "ID": cat.get("id", ""),
+                        "Name": cat.get("name", ""),
+                        "Slug": cat.get("slug", ""),
+                        "Parent ID": cat.get("parent", ""),
+                        "Count": cat.get("count", ""),
+                    }
+                )
+        # Атомарна заміна файлу
+        os.replace(TEMP_FILE, OUTPUT_FILE)
+        logger.info(f"Успішно експортовано {len(categories)} категорій у файл {OUTPUT_FILE}")
+    except Exception as e:
+        logger.error(f"Помилка під час запису у файл: {e}")
+        if TEMP_FILE.exists():
+            TEMP_FILE.unlink(missing_ok=True)
+
+
+async def export_categories_to_csv() -> None:
     settings = get_settings()
     base_url = "https://digitaldreams.com.ua/wp-json/wc/v3/products/categories"
 
@@ -58,34 +86,17 @@ async def export_categories_to_csv():
 
                 page += 1
             except Exception as e:
-                logger.error(f"Помилка під час отримання сторінки {page}: {e}")
-                break
+                logger.error(
+                    f"Критична помилка під час отримання сторінки {page}: {e}. Дамп скасовано для збереження цілісності."
+                )
+                return
 
     if not categories:
-        logger.warning("Категорії не знайдено або сталася помилка.")
+        logger.warning("Категорії не знайдено, дамп скасовано.")
         return
 
-    # Запис у CSV
-    fieldnames = ["ID", "Name", "Slug", "Parent ID", "Count"]
-
-    try:
-        with open(OUTPUT_FILE, mode="w", newline="", encoding="utf-8") as f:  # noqa: ASYNC230
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-
-            for cat in categories:
-                writer.writerow(
-                    {
-                        "ID": cat.get("id", ""),
-                        "Name": cat.get("name", ""),
-                        "Slug": cat.get("slug", ""),
-                        "Parent ID": cat.get("parent", ""),
-                        "Count": cat.get("count", ""),
-                    }
-                )
-        logger.info(f"Успішно експортовано {len(categories)} категорій у файл {OUTPUT_FILE}")
-    except Exception as e:
-        logger.error(f"Помилка під час запису у файл: {e}")
+    # Асинхронний виклик синхронного I/O в окремому потоці (захист Event Loop)
+    await asyncio.to_thread(_write_csv_sync, categories)
 
 
 if __name__ == "__main__":
