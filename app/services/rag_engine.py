@@ -316,11 +316,15 @@ class RAGEngine:
                 await self.telegram_service.send_lead(
                     lead, context_info=f"Повідомлення клієнта: '{question}'. Сесія: {session_id}"
                 )
-                msg = "Дякую! Контакти успішно передано. Наш менеджер зв'яжеться з вами найближчим часом."
+                msg = "Ваш запит отримано. Менеджер з вами зв'яжеться. Також можете написати нам в Інстаграм..."
                 _chat_memory[session_id].append({"role": "user", "content": question})
                 _chat_memory[session_id].append({"role": "bot", "content": msg})
                 return RAGResponse(
-                    answer=msg, sources=[], has_context=False, links=[], requires_lead=False
+                    answer=msg,
+                    sources=[],
+                    has_context=False,
+                    links=[{"text": "Написати в Instagram", "url": "https://instagram.com/"}],
+                    requires_lead=False,
                 )
             except Exception as e:
                 logger.warning("Lead capture validation failed", error=str(e))
@@ -434,16 +438,23 @@ class RAGEngine:
                 await self.telegram_service.send_lead(
                     lead, context_info=f"Повідомлення клієнта: '{question}'. Сесія: {session_id}"
                 )
-                msg = "Дякую! Контакти успішно передано. Наш менеджер зв'яжеться з вами найближчим часом."
+                msg = "Ваш запит отримано. Менеджер з вами зв'яжеться. Також можете написати нам в Інстаграм..."
 
-                meta_payload = json.dumps({"links": [], "requires_lead": False})
+                meta_payload = json.dumps(
+                    {
+                        "links": [
+                            {"text": "Написати в Instagram", "url": "https://instagram.com/"}
+                        ],
+                        "requires_lead": False,
+                    }
+                )
                 yield f"[METADATA] {meta_payload}\n\n"
                 yield msg
 
                 _chat_memory[session_id].append({"role": "user", "content": question})
                 _chat_memory[session_id].append({"role": "bot", "content": msg})
                 return
-            except ValueError as e:
+            except Exception as e:
                 logger.warning("Lead capture validation failed in stream", error=str(e))
 
         history = _chat_memory[session_id][-6:]

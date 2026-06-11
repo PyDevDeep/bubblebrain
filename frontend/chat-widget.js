@@ -70,6 +70,7 @@ class ChatWidget {
             }
             .bubble-button { background: linear-gradient(135deg, var(--bb-primary), var(--bb-secondary)); }
             .chat-header { background: linear-gradient(135deg, var(--bb-primary), var(--bb-secondary)); }
+            .message { white-space: pre-wrap !important; }
             .message.user { background: linear-gradient(135deg, var(--bb-primary), var(--bb-secondary)); }
             .message.system { color: var(--bb-accent); background: #ffebee; border: 1px solid var(--bb-accent); }
             .input-row input:focus { border-color: var(--bb-primary); }
