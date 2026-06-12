@@ -25,6 +25,10 @@ logger = get_logger(__name__)
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # on_startup
+    from app.core.db import init_db
+
+    await init_db()
+
     settings = get_settings()
     setup_logging(settings.log_level)
 
