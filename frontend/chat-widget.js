@@ -75,6 +75,9 @@ class ChatWidget {
             .message.system { color: var(--bb-accent); background: #ffebee; border: 1px solid var(--bb-accent); }
             .input-row input:focus { border-color: var(--bb-primary); }
             .input-row button { background: var(--bb-primary); }
+            .bb-contact-form { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; background: rgba(255,255,255,0.9); padding: 12px; border-radius: 8px; border: 1px solid #eee; }
+            .bb-contact-form input, .bb-contact-form select { padding: 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; width: 100%; box-sizing: border-box; }
+            .bb-contact-form button { padding: 10px; border: none; border-radius: 6px; background: var(--bb-primary); color: white; cursor: pointer; font-weight: bold; width: 100%; }
         `;
     this._shadow.appendChild(styleOverride);
 
@@ -347,13 +350,75 @@ class ChatWidget {
       const leadContainer = document.createElement("div");
       leadContainer.className = "lead-capture-box";
       leadContainer.innerHTML = `
-        <div class="lead-hint">Введіть ваш номер телефону (Telegram/Viber) нижче:</div>
+        <div class="lead-hint">Залиште свої дані і менеджер з вами зв'яжеться:</div>
+        <form class="bb-contact-form">
+          <div style="position: absolute; left: -9999px; opacity: 0;" aria-hidden="true" tabindex="-1">
+            <label>Залиште це поле порожнім</label>
+            <input type="text" name="honeypot" tabindex="-1" autocomplete="off">
+          </div>
+          <input type="text" name="name" placeholder="Ваше ім'я" required>
+          <input type="text" name="contact_info" placeholder="Телефон або Нікнейм" required>
+          <select name="contact_method" required>
+            <option value="" disabled selected>Спосіб зв'язку</option>
+            <option value="telegram">Telegram</option>
+            <option value="viber">Viber</option>
+            <option value="phone">Телефон</option>
+          </select>
+          <button type="submit">Відправити</button>
+        </form>
+        <div class="form-message" style="margin-top: 10px; font-weight: bold; display: none; font-size: 13px;"></div>
       `;
       container.appendChild(leadContainer);
-      this._elements.input.placeholder = "+380XXXXXXXXX";
-      this._elements.input.focus();
+
+      const form = leadContainer.querySelector("form");
+      const msgDiv = leadContainer.querySelector(".form-message");
+      const btn = leadContainer.querySelector("button");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        msgDiv.style.display = "none";
+        btn.disabled = true;
+        btn.textContent = "Відправка...";
+
+        try {
+          const formData = new FormData(form);
+          const data = {};
+          for (const [key, value] of formData.entries()) {
+            data[key] = value || null;
+          }
+
+          const apiHost = this._config.apiHost || "http://localhost:8000/api/v1";
+          const response = await fetch(`${apiHost}/leads`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+          });
+
+          if (response.status === 413) throw new Error("Обсяг даних занадто великий");
+          if (response.status === 429) throw new Error("Забагато запитів. Зачекайте.");
+          if (response.status === 422) throw new Error("Некоректно заповнені поля форми.");
+          if (!response.ok) throw new Error("Помилка на сервері.");
+
+          msgDiv.textContent = "Ваші дані успішно відправлено!";
+          msgDiv.style.color = "green";
+          msgDiv.style.display = "block";
+          form.style.display = "none";
+        } catch (error) {
+          msgDiv.textContent = error.message || "Сталася помилка.";
+          msgDiv.style.color = "red";
+          msgDiv.style.display = "block";
+          btn.disabled = false;
+          btn.textContent = "Відправити";
+        }
+      });
+
+      this._elements.input.placeholder = "Очікування...";
+      this._elements.input.disabled = true;
+      this._elements.sendBtn.disabled = true;
     } else {
       this._elements.input.placeholder = this._config.placeholder;
+      this._elements.input.disabled = false;
+      this._elements.sendBtn.disabled = false;
     }
 
     this._elements.messages.scrollTop = this._elements.messages.scrollHeight;
@@ -395,59 +460,3 @@ class ChatWidget {
   }
 }
 window.ChatWidget = ChatWidget;
-
-document.addEventListener("DOMContentLoaded", () => {
-  const altForm = document.getElementById("alt-contact-form");
-  if (altForm) {
-    altForm.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const msgDiv = document.getElementById("contact-form-message");
-      const btn = altForm.querySelector("button[type='submit']");
-
-      msgDiv.style.display = "none";
-      btn.disabled = true;
-      btn.textContent = "Відправка...";
-
-      try {
-        const formData = new FormData(altForm);
-        const data = {};
-        for (const [key, value] of formData.entries()) {
-          data[key] = value || null;
-        }
-
-        // baseUrl for API
-        const apiHost = window.ChatWidgetConfig ? window.ChatWidgetConfig.apiHost : "http://localhost:8000/api/v1";
-
-        const response = await fetch(`${apiHost}/leads`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(data),
-        });
-
-        if (response.status === 413) {
-          throw new Error("Обсяг даних занадто великий");
-        } else if (response.status === 429) {
-          throw new Error("Забагато запитів. Зачекайте хвилинку.");
-        } else if (response.status === 422) {
-          throw new Error("Некоректно заповнені поля форми.");
-        } else if (!response.ok) {
-          throw new Error("Помилка на сервері.");
-        }
-
-        msgDiv.textContent = "Ваші дані успішно відправлено!";
-        msgDiv.style.color = "green";
-        msgDiv.style.display = "block";
-        altForm.reset();
-      } catch (error) {
-        msgDiv.textContent = error.message || "Сталася помилка.";
-        msgDiv.style.color = "red";
-        msgDiv.style.display = "block";
-      } finally {
-        btn.disabled = false;
-        btn.textContent = "Відправити";
-      }
-    });
-  }
-});
