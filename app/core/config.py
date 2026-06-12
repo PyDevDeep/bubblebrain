@@ -34,7 +34,8 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
-    instagram_url: str = "https://instagram.com/"
+    telegram_contact_url: str = "https://t.me/"
+    viber_contact_url: str = "viber://pa?chatURI="
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False
@@ -52,6 +53,13 @@ class Settings(BaseSettings):
     def validate_pinecone_environment(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("pinecone_environment cannot be empty")
+        return v
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def parse_allowed_origins(cls, v: str | list[str]) -> list[str]:
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
 
