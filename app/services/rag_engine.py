@@ -178,7 +178,10 @@ class RAGEngine:
                 if result.woo_url:
                     extracted_links.append({"text": "Оформити замовлення", "url": result.woo_url})
                 extracted_links.append(
-                    {"text": "Написати в Instagram", "url": self.settings.instagram_url}
+                    {"text": "✈️ Написати в Telegram", "url": self.settings.telegram_contact_url}
+                )
+                extracted_links.append(
+                    {"text": "📞 Написати у Viber", "url": self.settings.viber_contact_url}
                 )
                 system_instructions.append(
                     f"Клієнт хоче купити '{product_name_str}'. ТВОЯ ЗАДАЧА:\n"
@@ -327,7 +330,12 @@ class RAGEngine:
                     answer=msg,
                     sources=[],
                     has_context=False,
-                    links=[LinkItem(text="Написати в Instagram", url=self.settings.instagram_url)],
+                    links=[
+                        LinkItem(
+                            text="✈️ Написати в Telegram", url=self.settings.telegram_contact_url
+                        ),
+                        LinkItem(text="📞 Написати у Viber", url=self.settings.viber_contact_url),
+                    ],
                     requires_lead=False,
                 )
             except Exception as e:
@@ -447,7 +455,11 @@ class RAGEngine:
                 meta_payload = json.dumps(
                     {
                         "links": [
-                            {"text": "Написати в Instagram", "url": self.settings.instagram_url}
+                            {
+                                "text": "✈️ Написати в Telegram",
+                                "url": self.settings.telegram_contact_url,
+                            },
+                            {"text": "📞 Написати у Viber", "url": self.settings.viber_contact_url},
                         ],
                         "requires_lead": False,
                     },
@@ -520,16 +532,23 @@ class RAGEngine:
         )
         yield f"[METADATA] {meta_payload}"
 
-        stream = self.openai_service.stream_chat_completion(
-            system_prompt=RAG_SYSTEM_PROMPT,
-            user_message=extended_user_message.strip(),
-            context_chunks=final_context,
-        )
-
         full_response = ""
         try:
+            stream = self.openai_service.stream_chat_completion(
+                system_prompt=RAG_SYSTEM_PROMPT,
+                user_message=extended_user_message.strip(),
+                context_chunks=final_context,
+            )
+
             async for token in stream:
                 full_response += token
                 yield json.dumps({"token": token}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"OpenAI Stream failed: {e}")
+            fallback_msg = (
+                "\n\nСервіс тимчасово недоступний. Спробуйте пізніше або зв'яжіться з менеджером."
+            )
+            yield json.dumps({"token": fallback_msg}, ensure_ascii=False)
+            full_response += fallback_msg
         finally:
             _chat_memory[session_id].append({"role": "bot", "content": full_response})
