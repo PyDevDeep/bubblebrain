@@ -30,8 +30,31 @@
     <div class="container">
       <h1>BubbleBrain Widget</h1>
       <p>Ізольований тест з оновленою палітрою та виправленим рендерингом.</p>
-    </div>
 
+      <!-- Альтернативний блок контактів -->
+      <div class="contact-section" style="margin-top: 40px; padding: 20px; background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(10px); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.1); border: 1px solid rgba(255,255,255,0.2);">
+        <h2 style="margin-top: 0;">Альтернативний зв'язок</h2>
+        <p>Залиште свої дані і менеджер з вами зв'яжеться:</p>
+        <form id="alt-contact-form" style="display: flex; flex-direction: column; gap: 15px;">
+          <!-- Honeypot -->
+          <div style="position: absolute; left: -9999px; opacity: 0;" aria-hidden="true" tabindex="-1">
+            <label for="honeypot">Залиште це поле порожнім</label>
+            <input type="text" id="honeypot" name="honeypot" tabindex="-1" autocomplete="off">
+          </div>
+
+          <input type="text" name="name" placeholder="Ваше ім'я" required style="padding: 10px; border-radius: 6px; border: 1px solid #ccc;">
+          <input type="text" name="contact_info" placeholder="Телефон або Нікнейм" required style="padding: 10px; border-radius: 6px; border: 1px solid #ccc;">
+          <select name="contact_method" required style="padding: 10px; border-radius: 6px; border: 1px solid #ccc;">
+            <option value="" disabled selected>Бажаний спосіб зв'язку</option>
+            <option value="telegram">Telegram</option>
+            <option value="viber">Viber</option>
+            <option value="phone">Телефонний дзвінок</option>
+          </select>
+          <button type="submit" style="padding: 12px; border: none; border-radius: 6px; background: #4B0082; color: white; cursor: pointer; font-weight: bold; transition: background 0.3s;">Відправити</button>
+        </form>
+        <div id="contact-form-message" style="margin-top: 15px; font-weight: bold; display: none;"></div>
+      </div>
+    </div>
     <script>
       window.ChatWidgetConfig = {
         apiHost: "https://alliases.duckdns.org/BubbleBrain/api/v1",

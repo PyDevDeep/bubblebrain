@@ -395,3 +395,59 @@ class ChatWidget {
   }
 }
 window.ChatWidget = ChatWidget;
+
+document.addEventListener("DOMContentLoaded", () => {
+  const altForm = document.getElementById("alt-contact-form");
+  if (altForm) {
+    altForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const msgDiv = document.getElementById("contact-form-message");
+      const btn = altForm.querySelector("button[type='submit']");
+
+      msgDiv.style.display = "none";
+      btn.disabled = true;
+      btn.textContent = "Відправка...";
+
+      try {
+        const formData = new FormData(altForm);
+        const data = {};
+        for (const [key, value] of formData.entries()) {
+          data[key] = value || null;
+        }
+
+        // baseUrl for API
+        const apiHost = window.ChatWidgetConfig ? window.ChatWidgetConfig.apiHost : "http://localhost:8000/api/v1";
+
+        const response = await fetch(`${apiHost}/leads`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(data),
+        });
+
+        if (response.status === 413) {
+          throw new Error("Обсяг даних занадто великий");
+        } else if (response.status === 429) {
+          throw new Error("Забагато запитів. Зачекайте хвилинку.");
+        } else if (response.status === 422) {
+          throw new Error("Некоректно заповнені поля форми.");
+        } else if (!response.ok) {
+          throw new Error("Помилка на сервері.");
+        }
+
+        msgDiv.textContent = "Ваші дані успішно відправлено!";
+        msgDiv.style.color = "green";
+        msgDiv.style.display = "block";
+        altForm.reset();
+      } catch (error) {
+        msgDiv.textContent = error.message || "Сталася помилка.";
+        msgDiv.style.color = "red";
+        msgDiv.style.display = "block";
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Відправити";
+      }
+    });
+  }
+});
