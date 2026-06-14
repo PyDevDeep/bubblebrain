@@ -8,6 +8,7 @@ from app.core.config import Settings
 from app.core.logging_config import get_logger
 from app.schemas.chat import LeadData, LinkItem, RAGResponse
 from app.services.category_manager import CategoryManager
+from app.services.guardrails_service import GuardrailsService
 from app.services.openai_service import OpenAIService
 from app.services.price_comparator import PriceComparator
 from app.services.telegram_service import TelegramService
@@ -27,6 +28,7 @@ class RAGEngine:
         price_comparator: PriceComparator,
         telegram_service: TelegramService,
         category_manager: CategoryManager,
+        guardrails_service: GuardrailsService,
         settings: Settings,
     ) -> None:
         self.openai_service = openai_service
@@ -34,6 +36,7 @@ class RAGEngine:
         self.price_comparator = price_comparator
         self.telegram_service = telegram_service
         self.category_manager = category_manager
+        self.guardrails_service = guardrails_service
         self.settings = settings
         self.top_k = settings.top_k_results
         self.threshold = settings.similarity_threshold
@@ -307,8 +310,19 @@ class RAGEngine:
 
         return product_facts, system_instructions, extracted_links, requires_lead
 
-    async def process_query(self, question: str, session_id: str = "default") -> RAGResponse:
+    async def process_query(
+        self, question: str, session_id: str = "default", client_ip: str | None = None
+    ) -> RAGResponse:
         start_total = time.perf_counter()
+
+        if not self.guardrails_service.validate_input(question, client_ip=client_ip):
+            return RAGResponse(
+                answer="Вибачте, виникла технічна затримка при обробці запиту. Будь ласка, переформулюйте питання стосовно товарів.",
+                sources=[],
+                has_context=False,
+                links=[],
+                requires_lead=False,
+            )
 
         if session_id not in _chat_memory:
             _chat_memory[session_id] = []
@@ -433,9 +447,16 @@ class RAGEngine:
         )
 
     async def process_query_stream(
-        self, question: str, session_id: str = "default"
+        self, question: str, session_id: str = "default", client_ip: str | None = None
     ) -> AsyncGenerator[str]:
         """Повний цикл RAG для стрімінгових запитів (SSE)."""
+        if not self.guardrails_service.validate_input(question, client_ip=client_ip):
+            fallback_msg = "Вибачте, виникла технічна затримка при обробці запиту. Будь ласка, переформулюйте питання стосовно товарів."
+            meta_payload = json.dumps({"links": [], "requires_lead": False}, ensure_ascii=False)
+            yield f"[METADATA] {meta_payload}"
+            yield json.dumps({"token": fallback_msg}, ensure_ascii=False)
+            return
+
         if session_id not in _chat_memory:
             _chat_memory[session_id] = []
 
