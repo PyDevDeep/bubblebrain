@@ -11,6 +11,7 @@ from app.middleware.rate_limiter import limiter
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.cache_service import CacheService
 from app.services.category_manager import CategoryManager
+from app.services.guardrails_service import GuardrailsService
 from app.services.openai_service import OpenAIService
 from app.services.price_comparator import PriceComparator
 from app.services.rag_engine import RAGEngine
@@ -34,6 +35,7 @@ def get_rag_engine(settings: Settings = Depends(get_settings)) -> RAGEngine:
     price_comparator = PriceComparator(woo_service, scraper_service, cache_service, settings)
     telegram_service = TelegramService(settings)
     category_manager = CategoryManager()
+    guardrails_service = GuardrailsService()
 
     return RAGEngine(
         openai_service=openai_service,
@@ -41,6 +43,7 @@ def get_rag_engine(settings: Settings = Depends(get_settings)) -> RAGEngine:
         price_comparator=price_comparator,
         telegram_service=telegram_service,
         category_manager=category_manager,
+        guardrails_service=guardrails_service,
         settings=settings,
     )
 
@@ -56,11 +59,16 @@ async def chat_completion(
     """
     Синхронний ендпоінт чату. Запускає RAG pipeline та повертає повну відповідь.
     """
-    logger.info("Sync chat request received", session_id=chat_request.session_id)
+    client_ip = request.client.host if request.client else None
+    logger.info(
+        "Sync chat request received", session_id=chat_request.session_id, client_ip=client_ip
+    )
     session_id = chat_request.session_id or str(uuid.uuid4())
 
     try:
-        rag_response = await rag_engine.process_query(chat_request.question)
+        rag_response = await rag_engine.process_query(
+            chat_request.question, session_id=session_id, client_ip=client_ip
+        )
         return ChatResponse(
             answer=rag_response.answer,
             sources=rag_response.sources,
@@ -89,12 +97,15 @@ async def chat_stream(
     """
     Streaming (SSE) ендпоінт чату. Повертає токени по мірі їх генерації моделлю.
     """
+    client_ip = request.client.host if request.client else None
     session_id = chat_request.session_id or str(uuid.uuid4())
-    logger.info("Stream chat request received", session_id=session_id)
+    logger.info("Stream chat request received", session_id=session_id, client_ip=client_ip)
 
     async def event_generator() -> AsyncGenerator[str]:
         try:
-            async for token in rag_engine.process_query_stream(chat_request.question, session_id):
+            async for token in rag_engine.process_query_stream(
+                chat_request.question, session_id=session_id, client_ip=client_ip
+            ):
                 yield f"data: {token}\n\n"
         except Exception as e:
             logger.error("Critical error during streaming", error=str(e), exc_info=True)
