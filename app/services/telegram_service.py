@@ -25,10 +25,13 @@ class TelegramService:
                     self.base_url,
                     json={"chat_id": self.chat_id, "text": message, "parse_mode": "HTML"},
                 )
-                if resp.status_code != 200:
-                    logger.error("Failed to send TG alert", response=resp.text)
-        except Exception as e:
-            logger.error("Error sending TG alert", error=str(e))
+                resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error("HTTP error sending TG alert", error=str(e))
+            raise
+        except httpx.RequestError as e:
+            logger.error("Network error sending TG alert", error=str(e))
+            raise
 
     async def send_lead(self, lead: LeadData, context_info: str = "Запит з чату") -> None:
         """Відправка валідованого ліда менеджеру."""
@@ -49,9 +52,11 @@ class TelegramService:
                     self.base_url,
                     json={"chat_id": self.chat_id, "text": message, "parse_mode": "HTML"},
                 )
-                if resp.status_code != 200:
-                    logger.error("Failed to send TG lead", response=resp.text)
-                else:
-                    logger.info("Lead successfully sent to Telegram", phone=lead.phone)
-        except Exception as e:
-            logger.error("Error sending TG lead", error=str(e))
+                resp.raise_for_status()
+                logger.info("Lead successfully sent to Telegram", phone=lead.phone)
+        except httpx.HTTPStatusError as e:
+            logger.error("HTTP error sending TG lead", error=str(e))
+            raise
+        except httpx.RequestError as e:
+            logger.error("Network error sending TG lead", error=str(e))
+            raise
