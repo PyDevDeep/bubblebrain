@@ -101,7 +101,7 @@ async def test_compare_woo_found_no_sku(
     woo_mock_result.name = "Test Product"
     woo_mock_result.price_uah = 1000.0
     woo_mock_result.url = "http://test"
-    woo_mock_result.attributes = []
+    woo_mock_result.attributes = {}
     woo_mock_result.short_description = ""
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
@@ -127,6 +127,9 @@ async def test_compare_cache_hit(
     woo_mock_result.sku = "123"
     woo_mock_result.name = "Test Product"
     woo_mock_result.price_uah = 1000.0
+    woo_mock_result.url = "http://test"
+    woo_mock_result.attributes = {}
+    woo_mock_result.short_description = "test"
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_entry = MagicMock()
@@ -155,6 +158,9 @@ async def test_compare_checkout_forces_scrape(
     woo_mock_result.sku = "123"
     woo_mock_result.name = "Test Product"
     woo_mock_result.price_uah = 1000.0
+    woo_mock_result.url = "http://test"
+    woo_mock_result.attributes = {}
+    woo_mock_result.short_description = "test"
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_entry = MagicMock()
@@ -189,7 +195,11 @@ async def test_compare_margin_ok(
     """Сценарій 2.5: Перевірка маржі — маржа в нормі"""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
+    woo_mock_result.name = "Test Product"
     woo_mock_result.price_uah = 1000.0
+    woo_mock_result.url = "http://test"
+    woo_mock_result.attributes = {}
+    woo_mock_result.short_description = "test"
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_service_mock.get.return_value = None
@@ -218,7 +228,11 @@ async def test_compare_low_margin(
     """Сценарій 2.6: Перевірка маржі — низька маржа (Low Margin)"""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
+    woo_mock_result.name = "Test Product"
     woo_mock_result.price_uah = 1000.0
+    woo_mock_result.url = "http://test"
+    woo_mock_result.attributes = {}
+    woo_mock_result.short_description = "test"
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_service_mock.get.return_value = None
@@ -249,7 +263,11 @@ async def test_compare_checkout_margin_issue(
     """Сценарій 2.7: Перевірка маржі під час Checkout — проблема з маржею"""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
+    woo_mock_result.name = "Test Product"
     woo_mock_result.price_uah = 1000.0
+    woo_mock_result.url = "http://test"
+    woo_mock_result.attributes = {}
+    woo_mock_result.short_description = "test"
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_service_mock.get.return_value = None
@@ -279,7 +297,11 @@ async def test_compare_scraper_failed(
     """Сценарій 2.8: Помилка скрапера (Scraper Failed)"""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
+    woo_mock_result.name = "Test Product"
     woo_mock_result.price_uah = 1000.0
+    woo_mock_result.url = "http://test"
+    woo_mock_result.attributes = {}
+    woo_mock_result.short_description = "test"
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_service_mock.get.return_value = None
