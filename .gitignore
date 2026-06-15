@@ -4,7 +4,7 @@
 env/
 venv/
 ENV/
-cache.db
+
 # Python
 __pycache__/
 *.py[cod]
@@ -30,3 +30,8 @@ logs/*
 app/app.log
 llm_LOG.txt
 data/categories.csv
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3

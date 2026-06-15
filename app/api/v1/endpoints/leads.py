@@ -1,6 +1,13 @@
+import httpx
 import sentry_sdk
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
-from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
+from tenacity import (
+    RetryError,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.core.config import get_settings
 from app.core.db import AsyncSessionLocal
@@ -16,7 +23,11 @@ telegram_service = TelegramService(settings)
 MAX_PAYLOAD_SIZE = 2048
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(httpx.RequestError),
+)
 async def send_telegram_notification(lead_id: int, message: str) -> None:
     await telegram_service.send_alert(message)
 
@@ -72,7 +83,7 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
     async with AsyncSessionLocal() as session:
         db_lead = Lead(
             name=lead_data.name,
-            contact_info=lead_data.contact_info,
+            phone_number=lead_data.phone_number,
             contact_method=lead_data.contact_method,
             notification_status="pending",
         )
@@ -84,7 +95,7 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
     message = (
         f"🚨 <b>Новий лід з форми зв'язку!</b>\n\n"
         f"👤 <b>Ім'я:</b> {lead_data.name}\n"
-        f"📞 <b>Контакт:</b> <code>{lead_data.contact_info}</code>\n"
+        f"📞 <b>Контакт:</b> <code>{lead_data.phone_number}</code>\n"
         f"📱 <b>Спосіб:</b> {lead_data.contact_method}"
     )
 
