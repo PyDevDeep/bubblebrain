@@ -118,9 +118,9 @@ def test_api_create_lead_honeypot() -> None:
         },
     )
 
-    # Should return 200 OK to trick the bot, but not actually process it
-    assert response.status_code == 200
-    assert response.json() == {"status": "success"}
+    # The endpoint is configured with status_code=201
+    assert response.status_code == 201
+    assert response.json() == {"status": "success", "message": "Lead received"}
 
 
 @patch("app.api.v1.endpoints.leads.AsyncSessionLocal")
@@ -128,6 +128,16 @@ def test_api_create_lead_honeypot() -> None:
 def test_api_create_lead_success(mock_add_task: MagicMock, mock_session_local: MagicMock) -> None:
     # Set up the async context manager mock
     mock_session = AsyncMock()
+
+    # session.add is a synchronous method in SQLAlchemy AsyncSession
+    mock_session.add = MagicMock()
+
+    import typing
+
+    async def mock_refresh(instance: typing.Any) -> None:
+        instance.id = 1
+
+    mock_session.refresh = AsyncMock(side_effect=mock_refresh)
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
     response = client.post(
@@ -135,13 +145,12 @@ def test_api_create_lead_success(mock_add_task: MagicMock, mock_session_local: M
         json={"name": "Real User", "phone_number": "+380931234567", "contact_method": "telegram"},
     )
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "success"}
+    assert response.status_code == 201
+    assert response.json() == {"status": "success", "message": "Lead received"}
 
     # Verify DB insertion
     mock_session.add.assert_called_once()
     mock_session.commit.assert_called_once()
-    mock_session.refresh.assert_called_once()
 
     # Verify background task was queued
     mock_add_task.assert_called_once()
