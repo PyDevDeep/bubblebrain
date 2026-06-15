@@ -20,6 +20,7 @@ from app.services.scraper_service import ScraperService
 from app.services.telegram_service import TelegramService
 from app.services.vector_service import VectorService
 from app.services.woo_service import WooService
+from app.utils.network import get_client_ip
 
 logger = get_logger(__name__)
 chat_router = APIRouter()
@@ -62,7 +63,7 @@ async def chat_completion(
     """
     Синхронний ендпоінт чату. Запускає RAG pipeline та повертає повну відповідь.
     """
-    client_ip = request.client.host if request.client else None
+    client_ip = get_client_ip(request)
     logger.info(
         "Sync chat request received", session_id=chat_request.session_id, client_ip=client_ip
     )
@@ -100,7 +101,7 @@ async def chat_stream(
     """
     Streaming (SSE) ендпоінт чату. Повертає токени по мірі їх генерації моделлю.
     """
-    client_ip = request.client.host if request.client else None
+    client_ip = get_client_ip(request)
     session_id = chat_request.session_id or str(uuid.uuid4())
     logger.info("Stream chat request received", session_id=session_id, client_ip=client_ip)
 

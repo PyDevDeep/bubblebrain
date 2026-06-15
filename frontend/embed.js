@@ -30,10 +30,18 @@
     const script = document.createElement("script");
     script.src = scriptUrl;
     script.onload = () => {
+      if (window.ChatWidgetInstance) {
+        console.warn("BubbleBrain Widget is already initialized.");
+        return;
+      }
       window.ChatWidgetInstance = new window.ChatWidget(config);
     };
     document.head.appendChild(script);
   } else {
+    if (window.ChatWidgetInstance) {
+      console.warn("BubbleBrain Widget is already initialized.");
+      return;
+    }
     window.ChatWidgetInstance = new window.ChatWidget(config);
   }
 })();

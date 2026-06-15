@@ -19,8 +19,9 @@ class ChatWidget {
     this._hasOpened = false;
     this._typingIndicator = null;
 
-    // ДОДАНО: Генерація унікальної сесії для пам'яті бота
-    this._sessionId = this._generateSessionId();
+    // Збереження сесії в sessionStorage
+    this._sessionId = sessionStorage.getItem('bb_session') || this._generateSessionId();
+    sessionStorage.setItem('bb_session', this._sessionId);
 
     this._initDOM();
   }
@@ -91,17 +92,17 @@ class ChatWidget {
       this._config.position === "bottom-left" ? "left: 24px; right: auto;" : "";
 
     wrapper.innerHTML = `
-            <div class="bubble-button" style="${posStyle}">
+            <div class="bubble-button" role="button" tabindex="0" aria-label="Відкрити чат" style="${posStyle}">
                 <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM12 18c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm1-6h-2v-4h2v4z"/></svg>
             </div>
             <div class="chat-window" style="${posStyle}">
                 <div class="chat-header">
-                    <span>${this._config.title}</span>
-                    <span class="chat-close">&times;</span>
+                    <span class="chat-title"></span>
+                    <button class="chat-close" aria-label="Закрити чат" style="background: none; border: none; color: inherit; font: inherit; padding: 0; cursor: pointer;">&times;</button>
                 </div>
                 <div class="messages-container"></div>
                 <div class="input-row">
-                    <input type="text" placeholder="${this._config.placeholder}" />
+                    <input type="text" />
                     <button>Send</button>
                 </div>
             </div>
@@ -114,15 +115,22 @@ class ChatWidget {
       closeBtn: this._shadow.querySelector(".chat-close"),
       messages: this._shadow.querySelector(".messages-container"),
       input: this._shadow.querySelector("input"),
-      sendBtn: this._shadow.querySelector("button"),
+      sendBtn: this._shadow.querySelector(".input-row button"),
     };
+
+    this._shadow.querySelector(".chat-title").textContent = this._config.title;
+    this._elements.input.placeholder = this._config.placeholder;
   }
 
   _attachEvents() {
     this._elements.bubble.addEventListener("click", () => this.toggleWindow());
-    this._elements.closeBtn.addEventListener("click", () =>
-      this.toggleWindow(),
-    );
+    this._elements.bubble.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        this.toggleWindow();
+      }
+    });
+    this._elements.closeBtn.addEventListener("click", () => this.toggleWindow());
     this._elements.sendBtn.addEventListener("click", () => this._handleSend());
     this._elements.input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -133,6 +141,10 @@ class ChatWidget {
   }
 
   toggleWindow() {
+    if (!this._elements) {
+      console.warn("BubbleBrain Widget is not fully initialized yet.");
+      return;
+    }
     this._isOpen = !this._isOpen;
     if (this._isOpen) {
       this._elements.window.classList.add("open");
@@ -337,7 +349,16 @@ class ChatWidget {
       linksContainer.className = "interactive-links";
       links.forEach((link) => {
         const btn = document.createElement("a");
-        btn.href = link.url;
+        try {
+          const parsedUrl = new URL(link.url);
+          if (['http:', 'https:'].includes(parsedUrl.protocol)) {
+            btn.href = link.url;
+          } else {
+            btn.href = '#';
+          }
+        } catch (e) {
+          btn.href = '#';
+        }
         btn.target = "_blank";
         btn.className = "bb-link-btn";
         btn.textContent = link.text;
@@ -404,7 +425,9 @@ class ChatWidget {
           msgDiv.style.display = "block";
           form.style.display = "none";
         } catch (error) {
-          msgDiv.textContent = error.message || "Сталася помилка.";
+          msgDiv.textContent = error.message === "Failed to fetch"
+            ? "Помилка мережі. Перевірте з'єднання."
+            : (error.message || "Сталася помилка.");
           msgDiv.style.color = "red";
           msgDiv.style.display = "block";
           btn.disabled = false;

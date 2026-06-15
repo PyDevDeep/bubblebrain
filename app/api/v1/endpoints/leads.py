@@ -48,6 +48,14 @@ async def process_lead_background(lead_id: int, message: str) -> None:
             if lead:
                 lead.notification_status = "failed"  # type: ignore
                 await session.commit()
+        except Exception as e:
+            sentry_sdk.capture_message(
+                f"Unexpected error for lead_id={lead_id}: {e}", level="error"
+            )
+            lead = await session.get(Lead, lead_id)
+            if lead:
+                lead.notification_status = "failed"  # type: ignore
+                await session.commit()
 
 
 @leads_router.post("", status_code=status.HTTP_201_CREATED)

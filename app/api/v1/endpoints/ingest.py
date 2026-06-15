@@ -14,6 +14,8 @@ from app.utils.helpers import generate_document_id
 logger = get_logger(__name__)
 ingest_router = APIRouter()
 
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
 
 def get_openai_service(settings: Settings = Depends(get_settings)) -> OpenAIService:
     return OpenAIService(settings)
@@ -33,6 +35,12 @@ async def upload_document(
 
     filename = file.filename or "unknown"
     logger.info("Starting document ingestion", filename=filename)
+
+    if file.size and file.size > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds maximum allowed size of {MAX_FILE_SIZE / 1024 / 1024}MB",
+        )
 
     try:
         text = await extract_text(file)
