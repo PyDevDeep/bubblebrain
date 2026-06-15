@@ -26,10 +26,12 @@ class PriceComparator:
 
     def map_availability(self, dc_status: str) -> str:
         s = dc_status.lower() if dc_status else ""
-        if "ihneď" in s or "skladom" in s:
-            return "В наявності (відправка 3-5 днів)"
-        elif "objednávku" in s:
-            return "Під замовлення від постачальника (доставка 14-20 днів)"
+        if "skladom" in s or "ihneď k odberu" in s or "po objednaní" in s:
+            return "В наявності (доставка 3-5 днів)"
+        elif "na objednávku" in s:
+            return "Під замовлення (14-21 днів)"
+        elif "aktuálne nedostupné" in s:
+            return "Немає в наявності"
         return "Уточнюється у постачальника"
 
     async def compare(
@@ -55,22 +57,6 @@ class PriceComparator:
             )
 
         sku = woo_result.sku
-        woo_stock = getattr(woo_result, "stock_status", "instock")
-
-        if woo_stock == "instock":
-            logger.info("Product is instock on Woo, skipping Datacomp", sku=sku)
-            return PriceComparisonResult(
-                product_name=woo_result.name,
-                woo_price=woo_result.price_uah,
-                datacomp_price_uah=None,
-                availability_status="В наявності (відправка 1-3 дні)",
-                diff_woo_uah=None,
-                needs_alert=False,
-                datacomp_url=None,
-                woo_url=woo_result.url,
-                attributes=woo_result.attributes,
-                short_description=woo_result.short_description,
-            )
 
         if not sku:
             return PriceComparisonResult(
@@ -120,7 +106,7 @@ class PriceComparator:
                     )
                     await self.cache_service.set(new_entry)
 
-        mapped_availability = "Під замовлення від постачальника (доставка 14-20 днів)"
+        mapped_availability = self.map_availability(dc_availability_raw)
         diff_woo = None
         needs_alert = False
         alert_reason = None
