@@ -37,6 +37,10 @@ RULES:
 5. CRITICAL (Hybrid): The presence of ANY question about delivery, payment, warranty, or installment plan FORCES the intent to "{intent_hybrid}". This is the only way to return FAQ queries.
    -> {{"intent": "{intent_hybrid}", "product_name": "model name (if any)", "strict_query": "commercial query (if any)", "broad_query": "short query (if any)", "category_query": "EXACT category name", "normalized_faq_queries": ["installment plan", "delivery"]}}
 6. CRITICAL: For "category_query" choose the EXACT name from this list: [{categories_str}]. If nothing fits - null.
+7. If the client uses conversational greetings, small talk, or says thanks (e.g., "привіт", "дякую", "як справи"):
+   -> {{"intent": "{intent_general}", "product_name": null, "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": []}}
+8. If the client expresses a desire to contact a manager, talk to a human, or leave contacts:
+   -> {{"intent": "{intent_contact}", "product_name": null, "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": []}}
 
 Respond ONLY with valid JSON."""
 
@@ -51,3 +55,4 @@ INSTR_ALERT_FAILED = "УВАГА: Виникла технічна помилка
 INSTR_CHECKOUT_PRICE_ISSUE = "Інструкція: Ти щойно актуалізував дані на складі для фіналізації замовлення і виникла необхідність додаткового узгодження деталей постачання. Ввічливо скажи клієнту, що для завершення оформлення потрібне уточнення менеджера, і попроси залишити номер телефону (Telegram/Viber)."
 INSTR_DISCOUNT_AVAILABLE = "Інструкція: Для цього товару доступна індивідуальна знижка. Запропонуй клієнту передати номер телефону (Viber/Telegram), щоб менеджер узгодив з ним фінальну ціну."
 INSTR_PRICE_CHECKING = "Інформація для тебе: ціна на '{product_name}' зараз перевіряється. Скажи клієнту, що запит передано менеджеру і попроси контакти."
+INSTR_CONTACT_MANAGER = "Клієнт хоче зв'язатися з менеджером. ТВОЯ ЗАДАЧА: попросити клієнта залишити свій номер телефону в чаті АБО написати нам у Telegram/Viber (посилання вже згенеровані)."

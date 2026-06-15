@@ -8,7 +8,9 @@ from typing import Any, cast
 from app.core.config import Settings
 from app.core.constants import (
     INTENT_CHECKOUT,
+    INTENT_CONTACT,
     INTENT_FAQ,
+    INTENT_GENERAL,
     INTENT_HYBRID,
     INTENT_PRODUCT,
     INTENT_SEARCH,
@@ -32,7 +34,12 @@ from app.services.openai_service import OpenAIService
 from app.services.price_comparator import PriceComparator
 from app.services.telegram_service import TelegramService
 from app.services.vector_service import VectorService
-from app.utils.prompts import INTENT_ANALYZER_PROMPT, NO_CONTEXT_RESPONSE, RAG_SYSTEM_PROMPT
+from app.utils.prompts import (
+    INSTR_CONTACT_MANAGER,
+    INTENT_ANALYZER_PROMPT,
+    NO_CONTEXT_RESPONSE,
+    RAG_SYSTEM_PROMPT,
+)
 
 logger = get_logger(__name__)
 
@@ -92,6 +99,8 @@ class RAGEngine:
             intent_search=INTENT_SEARCH,
             intent_checkout=INTENT_CHECKOUT,
             intent_hybrid=INTENT_HYBRID,
+            intent_general=INTENT_GENERAL,
+            intent_contact=INTENT_CONTACT,
         )
 
         try:
@@ -212,6 +221,15 @@ class RAGEngine:
             extracted_links = res.extracted_links
             requires_lead = res.requires_lead
             lead_form_type = res.lead_form_type
+
+        elif intent_type == INTENT_CONTACT:
+            requires_lead = True
+            lead_form_type = "contact"
+            system_instructions.append(INSTR_CONTACT_MANAGER)
+            extracted_links.append(
+                {"text": LINK_TELEGRAM, "url": self.settings.telegram_contact_url}
+            )
+            extracted_links.append({"text": LINK_VIBER, "url": self.settings.viber_contact_url})
 
         return IntentContextResult(
             product_facts=product_facts,

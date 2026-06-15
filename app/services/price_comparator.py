@@ -58,6 +58,12 @@ class PriceComparator:
 
         sku = woo_result.sku
 
+        import re
+
+        match = re.search(r"\(([^)]+)\)$", woo_result.name.strip())
+        if match:
+            sku = match.group(1).strip()
+
         if not sku:
             return PriceComparisonResult(
                 product_name=woo_result.name,
@@ -88,6 +94,22 @@ class PriceComparator:
         else:
             logger.info("Cache MISS or FORCE REFRESH", sku=sku, is_checkout=is_checkout)
             dc_result = await self.scraper_service.scrape_datacomp(sku)
+
+            if not dc_result:
+                base_name = re.sub(r"\([^)]+\)$", "", woo_result.name).strip()
+                words = base_name.split()
+                start_idx = 0
+                for i, w in enumerate(words):
+                    if re.search(r"[A-Za-z]", w):
+                        start_idx = i
+                        break
+                cleaned_name = " ".join(words[start_idx:])
+
+                if cleaned_name and cleaned_name != sku:
+                    logger.info(
+                        "Fallback scraping by cleaned name", sku=sku, cleaned_name=cleaned_name
+                    )
+                    dc_result = await self.scraper_service.scrape_datacomp(cleaned_name)
 
             if dc_result:
                 dc_price_uah = dc_result.price_uah
