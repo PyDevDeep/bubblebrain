@@ -118,9 +118,9 @@ def test_api_create_lead_honeypot() -> None:
         },
     )
 
-    # Should return 200 OK to trick the bot, but not actually process it
-    assert response.status_code == 200
-    assert response.json() == {"status": "success"}
+    # The endpoint is configured with status_code=201
+    assert response.status_code == 201
+    assert response.json() == {"status": "success", "message": "Lead received"}
 
 
 @patch("app.api.v1.endpoints.leads.AsyncSessionLocal")
@@ -128,6 +128,16 @@ def test_api_create_lead_honeypot() -> None:
 def test_api_create_lead_success(mock_add_task: MagicMock, mock_session_local: MagicMock) -> None:
     # Set up the async context manager mock
     mock_session = AsyncMock()
+
+    # session.add is a synchronous method in SQLAlchemy AsyncSession
+    mock_session.add = MagicMock()
+
+    import typing
+
+    async def mock_refresh(instance: typing.Any) -> None:
+        instance.id = 1
+
+    mock_session.refresh = AsyncMock(side_effect=mock_refresh)
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
     response = client.post(
@@ -135,13 +145,129 @@ def test_api_create_lead_success(mock_add_task: MagicMock, mock_session_local: M
         json={"name": "Real User", "phone_number": "+380931234567", "contact_method": "telegram"},
     )
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "success"}
+    assert response.status_code == 201
+    assert response.json() == {"status": "success", "message": "Lead received"}
 
     # Verify DB insertion
     mock_session.add.assert_called_once()
     mock_session.commit.assert_called_once()
-    mock_session.refresh.assert_called_once()
 
     # Verify background task was queued
     mock_add_task.assert_called_once()
+
+
+def test_api_create_lead_payload_too_large_header() -> None:
+    response = client.post(
+        "/api/v1/leads",
+        headers={"content-length": "3000", "X-Forwarded-For": "10.0.0.2"},
+        json={"name": "Test"},
+    )
+    assert response.status_code == 413
+    assert response.json() == {"detail": "Payload Too Large"}
+
+
+def test_api_create_lead_payload_too_large_stream() -> None:
+    # Send a payload larger than 2048 bytes
+    large_payload = {
+        "name": "A" * 3000,
+        "phone_number": "0931234567",
+        "contact_method": "telegram",
+    }
+    response = client.post(
+        "/api/v1/leads", json=large_payload, headers={"X-Forwarded-For": "10.0.0.3"}
+    )
+    assert response.status_code == 413
+    assert response.json() == {"detail": "Payload Too Large"}
+
+
+def test_api_create_lead_invalid_json() -> None:
+    response = client.post(
+        "/api/v1/leads",
+        json={"wrong_field": "data"},  # missing name, phone, etc.
+        headers={"X-Forwarded-For": "10.0.0.4"},
+    )
+    assert response.status_code == 422
+    assert "Invalid JSON format or validation error" in response.json()["detail"]
+
+
+@patch("app.api.v1.endpoints.leads.AsyncSessionLocal")
+@patch("app.api.v1.endpoints.leads.send_telegram_notification", new_callable=AsyncMock)
+@pytest.mark.asyncio
+async def test_process_lead_background_success(
+    mock_send_tg: AsyncMock, mock_session_local: MagicMock
+) -> None:
+    from app.api.v1.endpoints.leads import process_lead_background
+    from app.models.lead import Lead
+
+    mock_session = AsyncMock()
+    mock_lead = MagicMock(spec=Lead)
+    mock_session.get.return_value = mock_lead
+    mock_session_local.return_value.__aenter__.return_value = mock_session
+
+    await process_lead_background(1, "Test Message")
+
+    mock_send_tg.assert_called_once_with(1, "Test Message")
+    assert mock_lead.notification_status == "sent"
+    mock_session.commit.assert_called_once()
+
+
+@patch("app.api.v1.endpoints.leads.AsyncSessionLocal")
+@patch("app.api.v1.endpoints.leads.send_telegram_notification", new_callable=AsyncMock)
+@patch("app.api.v1.endpoints.leads.sentry_sdk.capture_message")
+@pytest.mark.asyncio
+async def test_process_lead_background_retry_error(
+    mock_sentry: MagicMock, mock_send_tg: AsyncMock, mock_session_local: MagicMock
+) -> None:
+    from tenacity import RetryError
+
+    from app.api.v1.endpoints.leads import process_lead_background
+    from app.models.lead import Lead
+
+    mock_session = AsyncMock()
+    mock_lead = MagicMock(spec=Lead)
+    mock_session.get.return_value = mock_lead
+    mock_session_local.return_value.__aenter__.return_value = mock_session
+
+    # Simulate a RetryError from send_telegram_notification
+    mock_send_tg.side_effect = RetryError(last_attempt=MagicMock())
+
+    await process_lead_background(1, "Test Message")
+
+    # Verify Sentry was called
+    mock_sentry.assert_called_once_with("Telegram API failed for lead_id=1", level="error")
+
+    # Verify DB status updated to failed
+    assert mock_lead.notification_status == "failed"
+    mock_session.commit.assert_called_once()
+
+
+def test_api_create_lead_rate_limiting() -> None:
+    # Use a unique IP header to ensure rate limit buckets are fresh for this test
+    headers = {"X-Forwarded-For": "10.0.0.5"}
+
+    # 3 requests allowed per minute, so the 4th should fail with 429
+    for _ in range(3):
+        res = client.post(
+            "/api/v1/leads",
+            json={
+                "name": "Rate Limit",
+                "phone_number": "0931234567",
+                "contact_method": "telegram",
+                "honeypot": "spam",
+            },
+            headers=headers,
+        )
+        assert res.status_code == 201
+
+    res = client.post(
+        "/api/v1/leads",
+        json={
+            "name": "Rate Limit",
+            "phone_number": "0931234567",
+            "contact_method": "telegram",
+            "honeypot": "spam",
+        },
+        headers=headers,
+    )
+    assert res.status_code == 429
+    assert "Rate limit exceeded" in res.text
