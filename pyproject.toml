@@ -73,3 +73,10 @@ project-excludes = [
     "C:/__pyrefly_virtual__",
     "C:/__pyrefly_virtual__/**"
 ]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+extraPaths = ["."]
+executionEnvironments = [
+  { root = "tests", reportUnknownMemberType = "none", reportUnknownParameterType = "none", reportUnknownVariableType = "none", reportMissingParameterType = "none", reportUnknownArgumentType = "none", reportUnknownLambdaType = "none" }
+]
