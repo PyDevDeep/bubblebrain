@@ -29,7 +29,7 @@ logs/*
 .claude/
 app/app.log
 llm_LOG.txt
-data/categories.csv
+data/
 
 # Databases
 *.db

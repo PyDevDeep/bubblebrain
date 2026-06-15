@@ -128,6 +128,7 @@ async def test_search_intent_fallback_broad(mock_price_comparator):
 
     # strict fails, broad succeeds
     mock_price_comparator.woo_service.search_products_async.side_effect = [[], [mock_product]]
+    mock_price_comparator.woo_service.search_product_async.return_value = None
 
     # Act
     res = await handler.handle(
@@ -149,6 +150,7 @@ async def test_search_intent_nothing_found(mock_price_comparator):
     handler = SearchIntentHandler(mock_price_comparator)
 
     mock_price_comparator.woo_service.search_products_async.return_value = []
+    mock_price_comparator.woo_service.search_product_async.return_value = None
     mock_price_comparator.woo_service.search_products_by_category_async.return_value = []
 
     # Act

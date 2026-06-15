@@ -196,6 +196,12 @@ class SearchIntentHandler:
                 woo_products = await self.price_comparator.woo_service.search_products_async(
                     strict_term, category_id=category_id, limit=3
                 )
+                if not woo_products:
+                    single_prod = await self.price_comparator.woo_service.search_product_async(
+                        strict_term, category_id=category_id
+                    )
+                    if single_prod:
+                        woo_products = [single_prod]
         except Exception:
             logger.exception("WooCommerce strict search failed")
 
@@ -211,6 +217,13 @@ class SearchIntentHandler:
                 woo_products = await self.price_comparator.woo_service.search_products_async(
                     broad_term, category_id=category_id, limit=3
                 )
+                if not woo_products:
+                    single_prod = await self.price_comparator.woo_service.search_product_async(
+                        broad_term, category_id=category_id
+                    )
+                    if single_prod:
+                        woo_products = [single_prod]
+
                 if woo_products:
                     is_fallback_broad = True
             except Exception:
