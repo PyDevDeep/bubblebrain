@@ -211,7 +211,6 @@
   }
 }
 
-/* Інтерактивні елементи (Кнопки посилань та Ліди) */
 .interactive-links {
   display: flex;
   flex-direction: column;
@@ -219,6 +218,7 @@
   margin-top: 12px;
   border-top: 1px solid rgba(0, 0, 0, 0.05);
   padding-top: 12px;
+  white-space: normal !important;
 }
 
 .bb-link-btn {
@@ -244,6 +244,7 @@
   border-left: 3px solid var(--bb-accent, #ff2603);
   padding: 8px 12px;
   border-radius: 4px;
+  white-space: normal !important;
 }
 
 .lead-hint {

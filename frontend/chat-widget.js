@@ -75,9 +75,9 @@ class ChatWidget {
             .message.system { color: var(--bb-accent); background: #ffebee; border: 1px solid var(--bb-accent); }
             .input-row input:focus { border-color: var(--bb-primary); }
             .input-row button { background: var(--bb-primary); }
-            .bb-contact-form { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; background: rgba(255,255,255,0.9); padding: 12px; border-radius: 8px; border: 1px solid #eee; }
-            .bb-contact-form input, .bb-contact-form select { padding: 8px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; width: 100%; box-sizing: border-box; }
-            .bb-contact-form button { padding: 10px; border: none; border-radius: 6px; background: var(--bb-primary); color: white; cursor: pointer; font-weight: bold; width: 100%; }
+            .bb-contact-form { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 0 0; background: rgba(255,255,255,0.9); padding: 10px; border-radius: 8px; border: 1px solid #eee; }
+            .bb-contact-form input, .bb-contact-form select { padding: 8px; margin: 0; border-radius: 6px; border: 1px solid #ccc; font-size: 13px; width: 100%; box-sizing: border-box; }
+            .bb-contact-form button { padding: 8px; margin: 0; border: none; border-radius: 6px; background: var(--bb-primary); color: white; cursor: pointer; font-weight: bold; width: 100%; font-size: 13px; }
         `;
     this._shadow.appendChild(styleOverride);
 
@@ -352,12 +352,12 @@ class ChatWidget {
       leadContainer.innerHTML = `
         <div class="lead-hint">Залиште свої дані і менеджер з вами зв'яжеться:</div>
         <form class="bb-contact-form">
-          <div style="position: absolute; left: -9999px; opacity: 0;" aria-hidden="true" tabindex="-1">
+          <div style="position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; overflow: hidden;" aria-hidden="true" tabindex="-1">
             <label>Залиште це поле порожнім</label>
             <input type="text" name="honeypot" tabindex="-1" autocomplete="off">
           </div>
           <input type="text" name="name" placeholder="Ваше ім'я" required>
-          <input type="text" name="contact_info" placeholder="Телефон або Нікнейм" required>
+          <input type="text" name="phone_number" placeholder="Ваш телефон" pattern="^[\+\d\s\-\(\)]+$" required>
           <select name="contact_method" required>
             <option value="" disabled selected>Спосіб зв'язку</option>
             <option value="telegram">Telegram</option>
@@ -366,7 +366,7 @@ class ChatWidget {
           </select>
           <button type="submit">Відправити</button>
         </form>
-        <div class="form-message" style="margin-top: 10px; font-weight: bold; display: none; font-size: 13px;"></div>
+        <div class="form-message" style="margin-top: 8px; font-weight: bold; display: none; font-size: 13px;"></div>
       `;
       container.appendChild(leadContainer);
 
