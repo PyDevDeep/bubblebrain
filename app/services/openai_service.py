@@ -2,7 +2,8 @@ from collections.abc import AsyncGenerator, Sequence
 from typing import cast
 
 from openai import AsyncOpenAI, AsyncStream, OpenAIError, RateLimitError
-from openai.types.chat import ChatCompletionChunk
+from openai.types.chat import ChatCompletion, ChatCompletionChunk
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.core.config import Settings
 from app.core.logging_config import get_logger
@@ -21,6 +22,11 @@ class OpenAIService:
         self.openai_model = settings.openai_model
         self.max_tokens_response = settings.max_tokens_response
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(3),
+        retry=retry_if_exception_type((RateLimitError, OpenAIError)),
+    )
     async def generate_embedding(self, text: str) -> list[float]:
         """
         Генерацiя вектора розмiрнiстю 1536 для одного текстового фрагмента.
@@ -41,6 +47,11 @@ class OpenAIService:
             logger.error("OpenAI APIError during embedding generation", error=str(e))
             raise e
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(3),
+        retry=retry_if_exception_type((RateLimitError, OpenAIError)),
+    )
     async def generate_embeddings_batch(self, texts: Sequence[str]) -> list[list[float]]:
         """
         Батч-генерацiя embeddings для кiлькох текстiв за один API-виклик.
@@ -64,8 +75,17 @@ class OpenAIService:
             logger.error("OpenAI APIError during batch embedding", error=str(e))
             raise e
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(3),
+        retry=retry_if_exception_type((RateLimitError, OpenAIError)),
+    )
     async def get_chat_completion(
-        self, system_prompt: str, user_message: str, context_chunks: list[str]
+        self,
+        system_prompt: str,
+        user_message: str,
+        context_chunks: list[str],
+        response_format: dict[str, str] | None = None,
     ) -> str:
         """
         Генерацiя текстовоi вiдповiдi з RAG-контекстом.
@@ -84,12 +104,20 @@ class OpenAIService:
             {"role": "user", "content": user_message},
         ]
 
+        kwargs = {}
+        if response_format:
+            kwargs["response_format"] = response_format
+
         try:
-            response = await self.client.chat.completions.create(
-                model=self.openai_model,
-                messages=messages,  # type: ignore
-                max_tokens=self.max_tokens_response,
-                temperature=0.7,
+            response = cast(
+                ChatCompletion,
+                await self.client.chat.completions.create(
+                    model=self.openai_model,
+                    messages=messages,  # type: ignore
+                    max_tokens=self.max_tokens_response,
+                    temperature=0.7,
+                    **kwargs,  # type: ignore
+                ),
             )
             content = response.choices[0].message.content
             return content if content else ""
@@ -100,6 +128,11 @@ class OpenAIService:
             logger.error("OpenAI APIError during chat completion", error=str(e))
             raise e
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(3),
+        retry=retry_if_exception_type((RateLimitError, OpenAIError)),
+    )
     async def stream_chat_completion(
         self, system_prompt: str, user_message: str, context_chunks: list[str]
     ) -> AsyncGenerator[str]:

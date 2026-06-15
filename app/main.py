@@ -48,7 +48,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Для виходу з MVP необхідно:
     # Шлях А: Винести APScheduler в ізольований Docker-контейнер (окремий процес).
     # Шлях Б: Використати розподілене блокування (Redis Lock або APScheduler RedisJobStore).
-    scheduler = AsyncIOScheduler()  # type: ignore
+    from apscheduler.jobstores.sqlalchemy import (  # type: ignore[reportMissingTypeStubs]
+        SQLAlchemyJobStore,
+    )
+
+    jobstores = {"default": SQLAlchemyJobStore(url="sqlite:///bubblebrain.db")}
+    scheduler = AsyncIOScheduler(jobstores=jobstores)  # type: ignore
     scheduler.add_job(  # type: ignore[reportUnknownMemberType]
         export_categories_to_csv,
         trigger=CronTrigger(hour=3, minute=0),

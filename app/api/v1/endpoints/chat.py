@@ -1,10 +1,11 @@
 import uuid
 from collections.abc import AsyncGenerator
+from functools import lru_cache
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
-from app.core.config import Settings, get_settings
+from app.core.config import get_settings
 from app.core.logging_config import get_logger
 from app.core.security import verify_api_key
 from app.middleware.rate_limiter import limiter
@@ -26,7 +27,9 @@ logger = get_logger(__name__)
 chat_router = APIRouter()
 
 
-def get_rag_engine(settings: Settings = Depends(get_settings)) -> RAGEngine:
+@lru_cache
+def _get_cached_rag_engine() -> RAGEngine:
+    settings = get_settings()
     openai_service = OpenAIService(settings)
     vector_service = VectorService(settings)
 
@@ -50,6 +53,10 @@ def get_rag_engine(settings: Settings = Depends(get_settings)) -> RAGEngine:
         chat_memory_service=chat_memory_service,
         settings=settings,
     )
+
+
+def get_rag_engine() -> RAGEngine:
+    return _get_cached_rag_engine()
 
 
 @chat_router.post("", response_model=ChatResponse)

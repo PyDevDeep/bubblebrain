@@ -96,9 +96,10 @@ class RAGEngine:
 
         try:
             response = await self.openai_service.get_chat_completion(
-                system_prompt="You are a system JSON analyzer.",
+                system_prompt="You are a system JSON analyzer. Ensure you respond with valid JSON.",
                 user_message=prompt,
                 context_chunks=[],
+                response_format={"type": "json_object"},
             )
             cleaned = response.replace("```json", "").replace("```", "").strip()
             parsed_json = json.loads(cleaned)
@@ -216,6 +217,48 @@ class RAGEngine:
             requires_lead=requires_lead,
         )
 
+    async def _try_capture_lead(
+        self, question: str, session_id: str
+    ) -> tuple[bool, PipelineContext | None]:
+        cleaned_query = re.sub(REGEX_CLEAN_QUERY, "", question)
+        phone_match = re.search(REGEX_PHONE, cleaned_query)
+        if phone_match:
+            phone_number = phone_match.group(0)
+            logger.info("Direct lead captured", session_id=session_id)
+            try:
+                lead = LeadData(phone=phone_number)
+                lead_success = await self.telegram_service.send_lead(
+                    lead, context_info=f"User query: '{question}'. Session: {session_id}"
+                )
+                msg = MSG_LEAD_SUCCESS if lead_success else MSG_LEAD_FAILED
+                await self.chat_memory_service.add_interaction(session_id, question, msg)
+
+                links = [
+                    {"text": LINK_TELEGRAM, "url": self.settings.telegram_contact_url},
+                    {"text": LINK_VIBER, "url": self.settings.viber_contact_url},
+                ]
+                return True, PipelineContext(
+                    is_valid=False,
+                    fallback_response=msg,
+                    final_context=[],
+                    sources=[],
+                    extracted_links=links,
+                    requires_lead=False,
+                    extended_user_message="",
+                )
+            except Exception:
+                logger.exception("Lead capture validation failed")
+                return True, PipelineContext(
+                    is_valid=False,
+                    fallback_response=MSG_LEAD_FAILED,
+                    final_context=[],
+                    sources=[],
+                    extracted_links=[],
+                    requires_lead=False,
+                    extended_user_message="",
+                )
+        return False, None
+
     async def _prepare_rag_pipeline(
         self, question: str, session_id: str, client_ip: str | None
     ) -> PipelineContext:
@@ -235,43 +278,9 @@ class RAGEngine:
                 extended_user_message="",
             )
 
-        cleaned_query = re.sub(REGEX_CLEAN_QUERY, "", question)
-        phone_match = re.search(REGEX_PHONE, cleaned_query)
-        if phone_match:
-            phone_number = phone_match.group(0)
-            logger.info("Direct lead captured", session_id=session_id)
-            try:
-                lead = LeadData(phone=phone_number)
-                lead_success = await self.telegram_service.send_lead(
-                    lead, context_info=f"User query: '{question}'. Session: {session_id}"
-                )
-                msg = MSG_LEAD_SUCCESS if lead_success else MSG_LEAD_FAILED
-                await self.chat_memory_service.add_interaction(session_id, question, msg)
-
-                links = [
-                    {"text": LINK_TELEGRAM, "url": self.settings.telegram_contact_url},
-                    {"text": LINK_VIBER, "url": self.settings.viber_contact_url},
-                ]
-                return PipelineContext(
-                    is_valid=False,
-                    fallback_response=msg,
-                    final_context=[],
-                    sources=[],
-                    extracted_links=links,
-                    requires_lead=False,
-                    extended_user_message="",
-                )
-            except Exception:
-                logger.exception("Lead capture validation failed")
-                return PipelineContext(
-                    is_valid=False,
-                    fallback_response=MSG_LEAD_FAILED,
-                    final_context=[],
-                    sources=[],
-                    extracted_links=[],
-                    requires_lead=False,
-                    extended_user_message="",
-                )
+        is_lead, lead_ctx = await self._try_capture_lead(question, session_id)
+        if is_lead and lead_ctx:
+            return lead_ctx
 
         history = await self.chat_memory_service.get_history(session_id, limit=6)
         history_context = "\n".join(
