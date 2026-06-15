@@ -160,9 +160,13 @@ class RAGEngine:
                 )
                 if result.alert_reason in ["low_margin", "checkout_margin_issue"]:
                     msg = f"🚨 <b>Аномалія ціни / Зміна маржі!</b>\n📦 Товар: {safe_product_name}\n🌐 Наша ціна: {result.woo_price} грн\n🇸🇰 Закупка: {result.datacomp_price_uah} грн\n📉 Маржа: {result.diff_woo_uah} грн"
-                    await self.telegram_service.send_alert(msg)
+                    alert_success = await self.telegram_service.send_alert(msg)
 
-                    if is_checkout:
+                    if not alert_success:
+                        system_instructions.append(
+                            "УВАГА: Виникла технічна помилка зв'язку з менеджером (система сповіщень не працює). Вибачся перед клієнтом за тимчасові незручності і попроси його залишити свій номер телефону або Telegram/Viber прямо в чаті, щоб ми могли зв'язатися з ним як тільки систему буде відновлено."
+                        )
+                    elif is_checkout:
                         # Твоя логіка збереження клієнта без зміни ціни
                         system_instructions.append(
                             "Інструкція: Ти щойно актуалізував дані на складі для фіналізації замовлення і виникла необхідність додаткового узгодження деталей постачання. Ввічливо скажи клієнту, що для завершення оформлення потрібне уточнення менеджера, і попроси залишити номер телефону (Telegram/Viber)."
@@ -173,10 +177,15 @@ class RAGEngine:
                         )
                 else:
                     msg = f"⚠️ <b>Помилка Скрапера!</b>\n📦 Товар: {safe_product_name}\nНе вдалося отримати ціну."
-                    await self.telegram_service.send_alert(msg)
-                    system_instructions.append(
-                        f"Інформація для тебе: ціна на '{product_name_str}' зараз перевіряється. Скажи клієнту, що запит передано менеджеру і попроси контакти."
-                    )
+                    alert_success = await self.telegram_service.send_alert(msg)
+                    if not alert_success:
+                        system_instructions.append(
+                            "УВАГА: Виникла технічна помилка зв'язку з менеджером (система сповіщень не працює). Вибачся перед клієнтом за тимчасові незручності і попроси його залишити свій номер телефону або Telegram/Viber прямо в чаті, щоб ми могли зв'язатися з ним як тільки систему буде відновлено."
+                        )
+                    else:
+                        system_instructions.append(
+                            f"Інформація для тебе: ціна на '{product_name_str}' зараз перевіряється. Скажи клієнту, що запит передано менеджеру і попроси контакти."
+                        )
 
             # Якщо все добре і це оформлення замовлення
             elif is_checkout:
@@ -326,10 +335,13 @@ class RAGEngine:
             logger.info("Direct lead captured from chat", session_id=session_id)
             try:
                 lead = LeadData(phone=phone_number)
-                await self.telegram_service.send_lead(
+                lead_success = await self.telegram_service.send_lead(
                     lead, context_info=f"Повідомлення клієнта: '{question}'. Сесія: {session_id}"
                 )
-                msg = "Ваш запит отримано. Менеджер з вами зв'яжеться. Також можете написати нам в Інстаграм..."
+                if lead_success:
+                    msg = "Ваш запит отримано. Менеджер з вами зв'яжеться. Також можете написати нам в Інстаграм..."
+                else:
+                    msg = "На жаль, виникла технічна помилка при передачі вашого запиту менеджеру. Будь ласка, напишіть нам напряму в Telegram або Viber, щоб ми могли вам допомогти."
                 _chat_memory[session_id].append({"role": "user", "content": question})
                 _chat_memory[session_id].append({"role": "bot", "content": msg})
                 return RAGResponse(
@@ -453,10 +465,13 @@ class RAGEngine:
             logger.info("Direct lead captured from stream", session_id=session_id)
             try:
                 lead = LeadData(phone=phone_number)
-                await self.telegram_service.send_lead(
+                lead_success = await self.telegram_service.send_lead(
                     lead, context_info=f"Повідомлення клієнта: '{question}'. Сесія: {session_id}"
                 )
-                msg = "Ваш запит отримано. Менеджер з вами зв'яжеться. Також можете написати нам в Інстаграм..."
+                if lead_success:
+                    msg = "Ваш запит отримано. Менеджер з вами зв'яжеться. Також можете написати нам в Інстаграм..."
+                else:
+                    msg = "На жаль, виникла технічна помилка при передачі вашого запиту менеджеру. Будь ласка, напишіть нам напряму в Telegram або Viber, щоб ми могли вам допомогти."
 
                 meta_payload = json.dumps(
                     {
