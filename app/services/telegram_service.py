@@ -1,3 +1,5 @@
+import html
+
 import httpx
 
 from app.core.config import Settings
@@ -36,11 +38,15 @@ class TelegramService:
             logger.warning("Telegram credentials missing, lead not sent.")
             return
 
+        safe_name = html.escape(str(lead.name)) if lead.name else "Не вказано"
+        safe_phone = html.escape(str(lead.phone)) if lead.phone else ""
+        safe_context = html.escape(str(context_info)) if context_info else ""
+
         message = (
             f"🚨 <b>Новий лід від бота!</b>\n\n"
-            f"👤 <b>Ім'я:</b> {lead.name or 'Не вказано'}\n"
-            f"📞 <b>Телефон:</b> <code>{lead.phone}</code>\n"
-            f"💬 <b>Контекст:</b> {context_info}"
+            f"👤 <b>Ім'я:</b> {safe_name}\n"
+            f"📞 <b>Телефон:</b> <code>{safe_phone}</code>\n"
+            f"💬 <b>Контекст:</b> {safe_context}"
         )
 
         try:
