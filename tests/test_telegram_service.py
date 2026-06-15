@@ -12,6 +12,13 @@ def mock_settings_missing():
     settings = Mock(spec=Settings)
     settings.telegram_bot_token = ""
     settings.telegram_chat_id = ""
+    settings.telegram_topic_general = None
+    settings.telegram_topic_leads = None
+    settings.telegram_topic_hot_leads = None
+    settings.telegram_topic_conversions = None
+    settings.telegram_topic_bot_stats = None
+    settings.telegram_topic_prices = None
+    settings.telegram_topic_errors = None
     return settings
 
 

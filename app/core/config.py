@@ -34,6 +34,13 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
+    telegram_topic_general: int | None = None
+    telegram_topic_leads: int | None = None
+    telegram_topic_hot_leads: int | None = None
+    telegram_topic_conversions: int | None = None
+    telegram_topic_bot_stats: int | None = None
+    telegram_topic_prices: int | None = None
+    telegram_topic_errors: int | None = None
     telegram_contact_url: str = "https://t.me/"
     viber_contact_url: str = "viber://pa?chatURI="
 

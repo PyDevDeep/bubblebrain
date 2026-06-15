@@ -29,7 +29,7 @@ MAX_PAYLOAD_SIZE = 2048
 async def send_telegram_notification(lead_id: int, message: str) -> None:
     settings = get_settings()
     telegram_service = TelegramService(settings)
-    await telegram_service.send_alert(message)
+    await telegram_service.send_alert(message, alert_type="lead")
 
 
 async def process_lead_background(lead_id: int, message: str) -> None:

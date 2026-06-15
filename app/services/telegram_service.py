@@ -1,5 +1,6 @@
 import asyncio
 import html
+from typing import Any
 
 import httpx
 
@@ -19,17 +20,33 @@ class TelegramService:
             f"https://api.telegram.org/bot{self.token}/sendMessage" if self.token else None
         )
 
-    async def send_alert(self, message: str, retries: int = 3) -> bool:
+        # Topic IDs
+        self.fallback_topic = settings.telegram_topic_general
+        self.topics = {
+            "lead": settings.telegram_topic_leads,
+            "hot_lead": settings.telegram_topic_hot_leads,
+            "conversion": settings.telegram_topic_conversions,
+            "stat": settings.telegram_topic_bot_stats,
+            "price": settings.telegram_topic_prices,
+            "error": settings.telegram_topic_errors,
+        }
+
+    async def send_alert(self, message: str, alert_type: str = "general", retries: int = 3) -> bool:
         if not self.base_url or not self.chat_id:
             logger.warning("Telegram credentials missing, alert not sent.")
             return False
+
+        payload: dict[str, Any] = {"chat_id": self.chat_id, "text": message, "parse_mode": "HTML"}
+        topic_id = self.topics.get(alert_type) or self.fallback_topic
+        if topic_id:
+            payload["message_thread_id"] = topic_id
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             for attempt in range(retries):
                 try:
                     resp = await client.post(
                         self.base_url,
-                        json={"chat_id": self.chat_id, "text": message, "parse_mode": "HTML"},
+                        json=payload,
                     )
                     if resp.status_code == 200:
                         return True
@@ -64,12 +81,17 @@ class TelegramService:
             name=safe_name, phone=safe_phone, context=safe_context
         )
 
+        payload: dict[str, Any] = {"chat_id": self.chat_id, "text": message, "parse_mode": "HTML"}
+        topic_id = self.topics.get("lead") or self.fallback_topic
+        if topic_id:
+            payload["message_thread_id"] = topic_id
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             for attempt in range(retries):
                 try:
                     resp = await client.post(
                         self.base_url,
-                        json={"chat_id": self.chat_id, "text": message, "parse_mode": "HTML"},
+                        json=payload,
                     )
                     if resp.status_code == 200:
                         logger.info("Lead successfully sent to Telegram", phone=lead.phone)

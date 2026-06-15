@@ -27,6 +27,13 @@ def mock_settings(tmp_path):
     # Telegram
     settings.telegram_bot_token = "fake_token"
     settings.telegram_chat_id = "12345"
+    settings.telegram_topic_general = None
+    settings.telegram_topic_leads = None
+    settings.telegram_topic_hot_leads = None
+    settings.telegram_topic_conversions = None
+    settings.telegram_topic_bot_stats = None
+    settings.telegram_topic_prices = None
+    settings.telegram_topic_errors = None
     settings.telegram_contact_url = "http://tg"
     settings.viber_contact_url = "http://vb"
 

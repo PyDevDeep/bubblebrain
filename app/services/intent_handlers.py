@@ -90,7 +90,7 @@ class ProductCheckoutIntentHandler:
                     datacomp_price=result.datacomp_price_uah,
                     diff_woo=result.diff_woo_uah,
                 )
-                alert_success = await self.telegram_service.send_alert(msg)
+                alert_success = await self.telegram_service.send_alert(msg, alert_type="price")
 
                 if not alert_success:
                     system_instructions.append(INSTR_ALERT_FAILED)
@@ -100,7 +100,7 @@ class ProductCheckoutIntentHandler:
                     system_instructions.append(INSTR_DISCOUNT_AVAILABLE)
             else:
                 msg = ALERT_SCRAPER_FAILED.format(safe_product_name=safe_product_name)
-                alert_success = await self.telegram_service.send_alert(msg)
+                alert_success = await self.telegram_service.send_alert(msg, alert_type="error")
 
                 if not alert_success:
                     system_instructions.append(INSTR_ALERT_FAILED)
