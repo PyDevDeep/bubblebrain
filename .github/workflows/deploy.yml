@@ -3,6 +3,9 @@ name: Manual Deploy to VDS
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy-vds:
     runs-on: ubuntu-latest

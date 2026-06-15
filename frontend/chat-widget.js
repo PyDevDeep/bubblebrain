@@ -30,10 +30,9 @@ class ChatWidget {
     if (typeof crypto !== "undefined" && crypto.randomUUID) {
       return crypto.randomUUID();
     }
-    return (
-      Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15)
-    );
+    const array = new Uint32Array(4);
+    crypto.getRandomValues(array);
+    return Array.from(array, dec => dec.toString(36)).join('');
   }
   async _initDOM() {
     const host = document.createElement("div");
