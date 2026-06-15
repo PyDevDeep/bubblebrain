@@ -51,35 +51,35 @@ jobs:
       - name: Run Unit Tests
         run: poetry run pytest
 
-  build-and-push:
-    needs: test-and-scan
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build Docker image
-        run: |
-          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          docker build -t ghcr.io/$REPO_OWNER/bubblebrain:${{ github.sha }} .
-          # Uncomment to push to registry
-          # echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          # docker push ghcr.io/$REPO_OWNER/bubblebrain:${{ github.sha }}
-
-  deploy-vds:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - name: Deploy to VDS via SSH
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.VDS_HOST }}
-          username: ${{ secrets.VDS_USER }}
-          key: ${{ secrets.VDS_SSH_KEY }}
-          script: |
-            # cd /opt/bubblebrain
-            # export APP_VERSION=${{ github.sha }}
-            # docker-compose pull
-            # docker-compose up -d
-            # docker image prune -f
-            echo "Deployment step. Uncomment commands and setup secrets to enable."
+#   build-and-push:
+#     needs: test-and-scan
+#     runs-on: ubuntu-latest
+#     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+#     steps:
+#       - uses: actions/checkout@v4
+#       - name: Build Docker image
+#         run: |
+#           REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+#           docker build -t ghcr.io/$REPO_OWNER/bubblebrain:${{ github.sha }} .
+#           # Uncomment to push to registry
+#           # echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+#           # docker push ghcr.io/$REPO_OWNER/bubblebrain:${{ github.sha }}
+#
+#   deploy-vds:
+#     needs: build-and-push
+#     runs-on: ubuntu-latest
+#     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+#     steps:
+#       - name: Deploy to VDS via SSH
+#         uses: appleboy/ssh-action@master
+#         with:
+#           host: ${{ secrets.VDS_HOST }}
+#           username: ${{ secrets.VDS_USER }}
+#           key: ${{ secrets.VDS_SSH_KEY }}
+#           script: |
+#             # cd /opt/bubblebrain
+#             # export APP_VERSION=${{ github.sha }}
+#             # docker-compose pull
+#             # docker-compose up -d
+#             # docker image prune -f
+#             echo "Deployment step. Uncomment commands and setup secrets to enable."

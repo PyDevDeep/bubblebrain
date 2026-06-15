@@ -1,0 +1,21 @@
+name: Manual Deploy to VDS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-vds:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VDS via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VDS_HOST }}
+          username: ${{ secrets.VDS_USER }}
+          key: ${{ secrets.VDS_SSH_KEY }}
+          script: |
+            # cd /opt/bubblebrain
+            # git pull
+            # docker-compose up -d --build
+            # docker image prune -f
+            echo "Deployment step triggered manually. Uncomment commands to enable."
