@@ -11,6 +11,7 @@ from app.middleware.rate_limiter import limiter
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.cache_service import CacheService
 from app.services.category_manager import CategoryManager
+from app.services.chat_memory_service import ChatMemoryService
 from app.services.guardrails_service import GuardrailsService
 from app.services.openai_service import OpenAIService
 from app.services.price_comparator import PriceComparator
@@ -36,6 +37,7 @@ def get_rag_engine(settings: Settings = Depends(get_settings)) -> RAGEngine:
     telegram_service = TelegramService(settings)
     category_manager = CategoryManager()
     guardrails_service = GuardrailsService()
+    chat_memory_service = ChatMemoryService()
 
     return RAGEngine(
         openai_service=openai_service,
@@ -44,6 +46,7 @@ def get_rag_engine(settings: Settings = Depends(get_settings)) -> RAGEngine:
         telegram_service=telegram_service,
         category_manager=category_manager,
         guardrails_service=guardrails_service,
+        chat_memory_service=chat_memory_service,
         settings=settings,
     )
 

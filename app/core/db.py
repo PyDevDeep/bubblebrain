@@ -31,5 +31,14 @@ Base = declarative_base()
 
 
 async def init_db():
+    # Імпортуємо моделі тут, щоб Base.metadata.create_all їх побачив,
+    # уникаючи при цьому circular imports та E402 від Ruff.
+    from app.models.chat_memory import ChatMessage
+    from app.models.lead import Lead
+
+    # Заглушка, щоб Pylance/Ruff не сварилися на "unused import"
+    _ = ChatMessage
+    _ = Lead
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
