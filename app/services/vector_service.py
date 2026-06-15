@@ -25,8 +25,10 @@ class VectorService:
         self.dimension = 1536
         self.metric = "cosine"
 
-        self.ensure_index_exists()
         self.index: Any = self.pc.Index(self.index_name)  # type: ignore[reportUnknownMemberType]
+
+    async def initialize(self) -> None:
+        await asyncio.to_thread(self.ensure_index_exists)
 
     def ensure_index_exists(self) -> None:
         """
@@ -67,7 +69,7 @@ class VectorService:
             ]
 
             try:
-                self.index.upsert(vectors=formatted_batch)
+                await asyncio.to_thread(self.index.upsert, vectors=formatted_batch)
                 total_upserted += len(batch)
                 logger.info(
                     "Upserted batch",

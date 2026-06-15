@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from app.core.config import get_settings
+from app.core.constants import MSG_STREAM_CHAT_FAILED, MSG_SYNC_CHAT_FAILED
 from app.core.logging_config import get_logger
 from app.core.security import verify_api_key
 from app.middleware.rate_limiter import limiter
@@ -90,7 +91,7 @@ async def chat_completion(
         logger.error("Critical error in sync chat pipeline", error=str(e), exc_info=True)
         # Fallback відповідь замість 500 помилки
         return ChatResponse(
-            answer="Вибачте, виникла технічна затримка при обробці запиту. Спробуйте переформулювати питання або зверніться до нашого менеджера напряму.",
+            answer=MSG_SYNC_CHAT_FAILED,
             sources=[],
             has_context=False,
             session_id=session_id,
@@ -120,8 +121,7 @@ async def chat_stream(
                 yield f"data: {token}\n\n"
         except Exception as e:
             logger.error("Critical error during streaming", error=str(e), exc_info=True)
-            fallback_msg = "Технічна затримка на лінії. Оновіть сторінку або напишіть нам пізніше."
-            yield f"data: {fallback_msg}\n\n"
+            yield f"data: {MSG_STREAM_CHAT_FAILED}\n\n"
         finally:
             yield "data: [DONE]\n\n"
 

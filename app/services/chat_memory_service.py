@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy import delete, select
 
-from app.core.db import AsyncSessionLocal
+from app.core.db import AsyncSessionLocal, commit_with_retry
 from app.models.chat_memory import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ class ChatMemoryService:
             try:
                 msg = ChatMessage(session_id=session_id, role=role, content=content)
                 session.add(msg)
-                await session.commit()
+                await commit_with_retry(session)
             except Exception:
                 logger.exception("Failed to save chat message to SQLite")
                 await session.rollback()
@@ -51,7 +51,7 @@ class ChatMemoryService:
                 user_m = ChatMessage(session_id=session_id, role="user", content=user_msg)
                 bot_m = ChatMessage(session_id=session_id, role="bot", content=bot_msg)
                 session.add_all([user_m, bot_m])
-                await session.commit()
+                await commit_with_retry(session)
             except Exception:
                 logger.exception("Failed to save chat interaction to SQLite")
                 await session.rollback()
@@ -62,7 +62,7 @@ class ChatMemoryService:
             try:
                 stmt = delete(ChatMessage).where(ChatMessage.session_id == session_id)
                 await session.execute(stmt)
-                await session.commit()
+                await commit_with_retry(session)
             except Exception:
                 logger.exception("Failed to clear chat history")
                 await session.rollback()

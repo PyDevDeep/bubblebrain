@@ -15,7 +15,7 @@ from app.services.telegram_service import TelegramService
 
 @pytest.fixture(autouse=True)
 def reset_rate_limit() -> None:
-    limiter._storage.reset()
+    limiter._storage.reset()  # type: ignore[reportPrivateUsage]
 
 
 # 1. Pydantic schema tests

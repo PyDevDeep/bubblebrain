@@ -82,7 +82,7 @@ class RAGEngine:
             Dictionary containing 'intent', 'product_name', 'strict_query',
             'broad_query', 'category_query', and 'normalized_faq_queries'.
         """
-        categories_str = self.category_manager.get_categories_string()
+        categories_str = await self.category_manager.get_categories_string()
 
         prompt = INTENT_ANALYZER_PROMPT.format(
             history_context=history_context if history_context else "None",
@@ -175,7 +175,7 @@ class RAGEngine:
 
         category_term = str(intent_data.get("category_query") or "").strip()
         category_id = (
-            self.category_manager.get_category_id(category_term) if category_term else None
+            await self.category_manager.get_category_id(category_term) if category_term else None
         )
 
         if intent_type in [INTENT_PRODUCT, INTENT_HYBRID, INTENT_CHECKOUT] and product_name:

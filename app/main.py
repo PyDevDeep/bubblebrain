@@ -42,6 +42,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     logger.info("Application started", env=settings.pinecone_environment)
 
+    from app.services.vector_service import VectorService
+
+    vector_service = VectorService(settings)
+    await vector_service.initialize()
+
     # ТЕХНІЧНИЙ БОРГ (TECH DEBT):
     # Поточна реалізація крон-задач працює в пам'яті (APScheduler) і ОБМЕЖЕНА 1 воркером (--workers 1).
     # При збільшенні трафіку і кількості воркерів (наприклад, --workers 4), scheduler запуститься 4 рази.

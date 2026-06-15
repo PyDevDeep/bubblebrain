@@ -1,10 +1,11 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from app.core.config import Settings, get_settings
 from app.core.logging_config import get_logger
 from app.core.security import verify_api_key
+from app.middleware.rate_limiter import limiter
 from app.schemas.ingest import IngestResponse, TextIngestRequest
 from app.services.document_processor import chunk_text, extract_text
 from app.services.openai_service import OpenAIService
@@ -26,7 +27,9 @@ def get_vector_service(settings: Settings = Depends(get_settings)) -> VectorServ
 
 
 @ingest_router.post("/document", response_model=IngestResponse)
+@limiter.limit("5/minute")  # type: ignore[reportUntypedFunctionDecorator, reportUnknownMemberType]
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     api_key: str = Depends(verify_api_key),
     openai_service: OpenAIService = Depends(get_openai_service),
@@ -77,8 +80,10 @@ async def upload_document(
 
 
 @ingest_router.post("/text", response_model=IngestResponse)
+@limiter.limit("5/minute")  # type: ignore[reportUntypedFunctionDecorator, reportUnknownMemberType]
 async def upload_text(
-    request: TextIngestRequest,
+    request: Request,
+    payload: TextIngestRequest,
     api_key: str = Depends(verify_api_key),
     openai_service: OpenAIService = Depends(get_openai_service),
     vector_service: VectorService = Depends(get_vector_service),
@@ -86,7 +91,7 @@ async def upload_text(
 
     logger.info("Starting text ingestion")
     document_id = generate_document_id("raw_text")
-    chunks = chunk_text(request.text)
+    chunks = chunk_text(payload.text)
 
     if not chunks:
         raise HTTPException(
@@ -100,8 +105,8 @@ async def upload_text(
         for i, (chunk, emb) in enumerate(zip(chunks, embeddings, strict=True)):
             chunk_id = f"{document_id}_chunk_{i}"
             metadata: dict[str, Any] = {"text": chunk, "source": document_id, "chunk_index": i}
-            if request.metadata:
-                metadata.update(request.metadata)
+            if payload.metadata:
+                metadata.update(payload.metadata)
             vectors.append((chunk_id, emb, metadata))
 
         await vector_service.upsert_vectors(vectors)

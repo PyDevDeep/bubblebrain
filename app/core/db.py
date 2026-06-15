@@ -3,8 +3,10 @@ import sqlite3
 from typing import Any
 
 from sqlalchemy import event
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,16 @@ def set_sqlite_pragma(dbapi_connection: sqlite3.Connection, connection_record: A
     cursor.execute("PRAGMA journal_mode=WAL;")
     cursor.execute("PRAGMA busy_timeout=5000;")
     cursor.close()
+
+
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=0.1, min=0.1, max=2.0),
+    retry=retry_if_exception_type(OperationalError),
+)
+async def commit_with_retry(session: Any) -> None:
+    """Виконує session.commit() з ретраями для обходу блокувань SQLite."""
+    await session.commit()
 
 
 # TODO: Якщо кількість воркерів (Uvicorn/Gunicorn) буде збільшено > 1,

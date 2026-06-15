@@ -37,6 +37,26 @@ class WooService:
                 )
         return products
 
+    async def _fetch_and_parse_single(
+        self, client: httpx.AsyncClient, params: dict[str, str | int]
+    ) -> WooProduct | None:
+        resp = await client.get(self.base_url, params=params)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data and len(data) > 0:
+                parsed = await asyncio.to_thread(parse_product, data[0])
+                if parsed.get("price"):
+                    return WooProduct(
+                        sku=str(parsed.get("sku") or ""),
+                        name=str(parsed.get("name") or ""),
+                        price_uah=float(parsed.get("price") or 0.0),
+                        url=str(data[0].get("permalink") or ""),
+                        stock_status=str(data[0].get("stock_status") or "instock"),
+                        attributes=parsed.get("attributes", {}),
+                        short_description=parsed.get("short_description"),
+                    )
+        return None
+
     async def search_product_async(
         self, search_term: str, category_id: int | None = None
     ) -> WooProduct | None:
@@ -52,41 +72,15 @@ class WooService:
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
-                resp = await client.get(self.base_url, params=params)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if data and len(data) > 0:
-                        parsed = await asyncio.to_thread(parse_product, data[0])
-                        if parsed.get("price"):
-                            return WooProduct(
-                                sku=str(parsed.get("sku") or ""),
-                                name=str(parsed.get("name") or ""),
-                                price_uah=float(parsed.get("price") or 0.0),
-                                url=str(data[0].get("permalink") or ""),
-                                stock_status=str(data[0].get("stock_status") or "instock"),
-                                attributes=parsed.get("attributes", {}),
-                                short_description=parsed.get("short_description"),
-                            )
+                result = await self._fetch_and_parse_single(client, params)
+                if result:
+                    return result
 
                 params_sku: dict[str, str | int] = params.copy()
                 params_sku.pop("search", None)
                 params_sku["sku"] = search_term
 
-                resp_sku = await client.get(self.base_url, params=params_sku)
-                if resp_sku.status_code == 200:
-                    data_sku = resp_sku.json()
-                    if data_sku and len(data_sku) > 0:
-                        parsed_sku = await asyncio.to_thread(parse_product, data_sku[0])
-                        if parsed_sku.get("price"):
-                            return WooProduct(
-                                sku=str(parsed_sku.get("sku") or ""),
-                                name=str(parsed_sku.get("name") or ""),
-                                price_uah=float(parsed_sku.get("price") or 0.0),
-                                url=str(data_sku[0].get("permalink") or ""),
-                                stock_status=str(data_sku[0].get("stock_status") or "instock"),
-                                attributes=parsed_sku.get("attributes", {}),
-                                short_description=parsed_sku.get("short_description"),
-                            )
+                return await self._fetch_and_parse_single(client, params_sku)
             except httpx.TimeoutException:
                 logger.error("WooCommerce API Timeout", search_term=search_term)
             except httpx.RequestError as e:

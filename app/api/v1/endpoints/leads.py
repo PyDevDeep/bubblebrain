@@ -10,7 +10,7 @@ from tenacity import (
 )
 
 from app.core.config import get_settings
-from app.core.db import AsyncSessionLocal
+from app.core.db import AsyncSessionLocal, commit_with_retry
 from app.middleware.rate_limiter import limiter
 from app.models.lead import Lead
 from app.schemas.lead import ContactFormLead
@@ -40,14 +40,14 @@ async def process_lead_background(lead_id: int, message: str) -> None:
             lead = await session.get(Lead, lead_id)
             if lead:
                 lead.notification_status = "sent"  # type: ignore
-                await session.commit()
+                await commit_with_retry(session)
         except RetryError:
             # Якщо всі спроби вичерпано
             sentry_sdk.capture_message(f"Telegram API failed for lead_id={lead_id}", level="error")
             lead = await session.get(Lead, lead_id)
             if lead:
                 lead.notification_status = "failed"  # type: ignore
-                await session.commit()
+                await commit_with_retry(session)
         except Exception as e:
             sentry_sdk.capture_message(
                 f"Unexpected error for lead_id={lead_id}: {e}", level="error"
@@ -55,7 +55,7 @@ async def process_lead_background(lead_id: int, message: str) -> None:
             lead = await session.get(Lead, lead_id)
             if lead:
                 lead.notification_status = "failed"  # type: ignore
-                await session.commit()
+                await commit_with_retry(session)
 
 
 @leads_router.post("", status_code=status.HTTP_201_CREATED)
@@ -96,7 +96,7 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
             notification_status="pending",
         )
         session.add(db_lead)
-        await session.commit()
+        await commit_with_retry(session)
         await session.refresh(db_lead)
         lead_id = int(db_lead.id)  # type: ignore
 
