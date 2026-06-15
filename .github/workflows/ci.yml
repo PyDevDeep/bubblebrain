@@ -1,4 +1,4 @@
-name: Lint Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 
 jobs:
-  lint:
+  test-and-scan:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -32,6 +32,10 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-root
 
+      - name: Security Scan (Dependencies)
+        run: poetry run pip install pip-audit && poetry run pip-audit
+        continue-on-error: true
+
       - name: Check formatting with Ruff
         run: poetry run ruff format --check .
 
@@ -40,3 +44,38 @@ jobs:
 
       - name: Type checking with Pyright
         run: poetry run pyright
+
+      - name: Run Unit Tests
+        run: poetry run pytest
+
+  build-and-push:
+    needs: test-and-scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: |
+          docker build -t ghcr.io/${{ github.repository_owner }}/bubblebrain:${{ github.sha }} .
+          # Uncomment to push to registry
+          # echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          # docker push ghcr.io/${{ github.repository_owner }}/bubblebrain:${{ github.sha }}
+
+  deploy-vds:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to VDS via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.VDS_HOST }}
+          username: ${{ secrets.VDS_USER }}
+          key: ${{ secrets.VDS_SSH_KEY }}
+          script: |
+            # cd /opt/bubblebrain
+            # export APP_VERSION=${{ github.sha }}
+            # docker-compose pull
+            # docker-compose up -d
+            # docker image prune -f
+            echo "Deployment step. Uncomment commands and setup secrets to enable."

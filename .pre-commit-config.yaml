@@ -18,3 +18,13 @@ repos:
       - id: ruff
         args: [ --fix ]
       - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: Run pytest
+        entry: poetry run pytest
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]
