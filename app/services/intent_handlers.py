@@ -278,6 +278,10 @@ class SearchIntentHandler:
                         broad_term=broad_term, strict_term=strict_term
                     )
                 )
+            else:
+                system_instructions.append(
+                    INSTR_PRODUCT_FOUND.format(product_name=woo_products[0].name)
+                )
         else:
             requires_lead = True
             system_instructions.append(INSTR_NOTHING_FOUND)

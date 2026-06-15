@@ -16,8 +16,8 @@ class WooService:
         self.woo_ck = settings.woo_ck
         self.woo_cs = settings.woo_cs
         self.base_url = "https://digitaldreams.com.ua/wp-json/wc/v3/products"
-        # Жорсткий таймаут: 1 сек на з'єднання, 3 сек на отримання даних
-        self.timeout = httpx.Timeout(3.0, connect=1.0)
+        # Збільшено таймаут через повільний пошук WooCommerce
+        self.timeout = httpx.Timeout(15.0, connect=3.0)
 
     def _parse_product_list(self, data: list[dict[str, Any]]) -> list[WooProduct]:
         products: list[WooProduct] = []

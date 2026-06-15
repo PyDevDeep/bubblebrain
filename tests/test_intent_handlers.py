@@ -112,6 +112,8 @@ async def test_search_intent_strict_success(mock_price_comparator):
     assert res.requires_lead is False
     assert len(res.extracted_links) == 1
     assert "Test Prod" in res.product_facts[0]
+    assert len(res.system_instructions) == 1
+    assert "Бекенд знайшов товар" in res.system_instructions[0]
 
 
 @pytest.mark.asyncio
