@@ -1,3 +1,4 @@
+import html
 import json
 import re
 import time
@@ -155,8 +156,13 @@ class RAGEngine:
 
             if result.needs_alert:
                 requires_lead = True
+                safe_product_name = (
+                    html.escape(str(result.product_name))
+                    if result.product_name
+                    else "Невідомий товар"
+                )
                 if result.alert_reason in ["low_margin", "checkout_margin_issue"]:
-                    msg = f"🚨 <b>Аномалія ціни / Зміна маржі!</b>\n📦 Товар: {result.product_name}\n🌐 Наша ціна: {result.woo_price} грн\n🇸🇰 Закупка: {result.datacomp_price_uah} грн\n📉 Маржа: {result.diff_woo_uah} грн"
+                    msg = f"🚨 <b>Аномалія ціни / Зміна маржі!</b>\n📦 Товар: {safe_product_name}\n🌐 Наша ціна: {result.woo_price} грн\n🇸🇰 Закупка: {result.datacomp_price_uah} грн\n📉 Маржа: {result.diff_woo_uah} грн"
                     await self.telegram_service.send_alert(msg)
 
                     if is_checkout:
@@ -169,7 +175,7 @@ class RAGEngine:
                             "Інструкція: Для цього товару доступна індивідуальна знижка. Запропонуй клієнту передати номер телефону (Viber/Telegram), щоб менеджер узгодив з ним фінальну ціну."
                         )
                 else:
-                    msg = f"⚠️ <b>Помилка Скрапера!</b>\n📦 Товар: {result.product_name}\nНе вдалося отримати ціну."
+                    msg = f"⚠️ <b>Помилка Скрапера!</b>\n📦 Товар: {safe_product_name}\nНе вдалося отримати ціну."
                     await self.telegram_service.send_alert(msg)
                     system_instructions.append(
                         f"Інформація для тебе: ціна на '{product_name_str}' зараз перевіряється. Скажи клієнту, що запит передано менеджеру і попроси контакти."
