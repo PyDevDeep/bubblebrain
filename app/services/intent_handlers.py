@@ -56,6 +56,7 @@ class ProductCheckoutIntentHandler:
     ) -> IntentContextResult:
         is_checkout = intent_type == INTENT_CHECKOUT
         requires_lead = False
+        lead_form_type = None
         new_intent_type = intent_type
 
         logger.info(
@@ -74,6 +75,7 @@ class ProductCheckoutIntentHandler:
                 system_instructions=system_instructions,
                 extracted_links=extracted_links,
                 requires_lead=requires_lead,
+                lead_form_type=lead_form_type,
                 new_intent_type=INTENT_SEARCH,
             )
 
@@ -111,6 +113,7 @@ class ProductCheckoutIntentHandler:
 
         elif is_checkout:
             requires_lead = True
+            lead_form_type = "checkout"
             if result.woo_url:
                 extracted_links.append({"text": LINK_CHECKOUT, "url": result.woo_url})
             extracted_links.append(
@@ -156,6 +159,7 @@ class ProductCheckoutIntentHandler:
             system_instructions=system_instructions,
             extracted_links=extracted_links,
             requires_lead=requires_lead,
+            lead_form_type=lead_form_type,
             new_intent_type=new_intent_type,
         )
 
@@ -173,6 +177,7 @@ class SearchIntentHandler:
         extracted_links: list[dict[str, str]],
     ) -> IntentContextResult:
         requires_lead = False
+        lead_form_type = None
         strict_term = str(
             intent_data.get("strict_query")
             or intent_data.get("search_term")
@@ -269,4 +274,5 @@ class SearchIntentHandler:
             system_instructions=system_instructions,
             extracted_links=extracted_links,
             requires_lead=requires_lead,
+            lead_form_type=lead_form_type,
         )

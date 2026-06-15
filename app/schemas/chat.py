@@ -1,5 +1,6 @@
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -37,6 +38,9 @@ class RAGResponse(BaseModel):
     requires_lead: bool = Field(
         default=False, description="Прапорець для активації форми збору контактів на фронтенді"
     )
+    lead_form_type: Literal["contact", "checkout"] | None = Field(
+        default=None, description="Тип форми для відображення на фронтенді"
+    )
 
 
 class ChatResponse(RAGResponse):
@@ -56,6 +60,7 @@ class PipelineContext:
     sources: list[str]
     extracted_links: list[dict[str, str]]
     requires_lead: bool
+    lead_form_type: Literal["contact", "checkout"] | None
     extended_user_message: str
 
 
@@ -65,4 +70,5 @@ class IntentContextResult:
     system_instructions: list[str]
     extracted_links: list[dict[str, str]]
     requires_lead: bool
+    lead_form_type: Literal["contact", "checkout"] | None = None
     new_intent_type: str | None = None

@@ -247,6 +247,7 @@ class ChatWidget {
       // Стейт для кнопок і форм
       let currentLinks = [];
       let requiresLead = false;
+      let leadFormType = null;
 
       const updateDOM = () => {
         if (!isUpdating) return;
@@ -269,6 +270,7 @@ class ChatWidget {
             botBubble,
             currentLinks,
             requiresLead,
+            leadFormType,
           );
           break;
         }
@@ -289,6 +291,7 @@ class ChatWidget {
                 botBubble,
                 currentLinks,
                 requiresLead,
+                leadFormType,
               );
               return;
             }
@@ -300,6 +303,7 @@ class ChatWidget {
                 const meta = JSON.parse(data.slice(11));
                 currentLinks = meta.links || [];
                 requiresLead = meta.requires_lead || false;
+                leadFormType = meta.lead_form_type || null;
               } catch (e) {
                 console.error("Failed to parse metadata", e);
               }
@@ -342,7 +346,7 @@ class ChatWidget {
   }
 
   // МЕТОД ДЛЯ РЕНДЕРУ КНОПОК - ДОДАТИ ПІСЛЯ _sendMessageStream
-  _renderInteractiveElements(container, links, requiresLead) {
+  _renderInteractiveElements(container, links, requiresLead, leadFormType) {
     if (links.length > 0) {
       const linksContainer = document.createElement("div");
       linksContainer.className = "interactive-links";
@@ -369,23 +373,53 @@ class ChatWidget {
     if (requiresLead) {
       const leadContainer = document.createElement("div");
       leadContainer.className = "lead-capture-box";
-      leadContainer.innerHTML = `
-        <div class="lead-hint">Залиште свої дані і менеджер з вами зв'яжеться:</div>
-        <form class="bb-contact-form">
-          <div style="position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; overflow: hidden;" aria-hidden="true" tabindex="-1">
-            <label>Залиште це поле порожнім</label>
-            <input type="text" name="honeypot" tabindex="-1" autocomplete="off">
-          </div>
-          <input type="text" name="name" placeholder="Ваше ім'я" required>
-          <input type="text" name="phone_number" placeholder="Ваш телефон" pattern="^[\+\d\s\-\(\)]+$" required>
-          <select name="contact_method" required>
-            <option value="" disabled selected>Спосіб зв'язку</option>
-            <option value="telegram">Telegram</option>
-            <option value="viber">Viber</option>
-            <option value="phone">Телефон</option>
-          </select>
-          <button type="submit">Відправити</button>
-        </form>
+
+      let formHtml = "";
+      if (leadFormType === "checkout") {
+        formHtml = `
+          <div class="lead-hint">Оформлення замовлення. Залиште свої дані:</div>
+          <form class="bb-contact-form">
+            <div style="position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; overflow: hidden;" aria-hidden="true" tabindex="-1">
+              <label>Залиште це поле порожнім</label>
+              <input type="text" name="honeypot" tabindex="-1" autocomplete="off">
+            </div>
+            <input type="hidden" name="lead_type" value="checkout">
+            <input type="text" name="name" placeholder="Ваше ім'я" required>
+            <input type="text" name="surname" placeholder="Ваше прізвище" required>
+            <input type="text" name="phone_number" placeholder="Ваш телефон" pattern="^[\\+\\d\\s\\-\\(\\)]+$" required>
+            <input type="text" name="delivery_address" placeholder="Адреса доставки (місто, відділення НП)" required>
+            <select name="contact_method" required>
+              <option value="" disabled selected>Бажаний спосіб зв'язку</option>
+              <option value="telegram">Telegram</option>
+              <option value="viber">Viber</option>
+              <option value="phone">Телефон</option>
+            </select>
+            <button type="submit">Підтвердити замовлення</button>
+          </form>
+        `;
+      } else {
+        formHtml = `
+          <div class="lead-hint">Залиште свої дані і менеджер з вами зв'яжеться:</div>
+          <form class="bb-contact-form">
+            <div style="position: absolute; left: -9999px; opacity: 0; height: 0; width: 0; overflow: hidden;" aria-hidden="true" tabindex="-1">
+              <label>Залиште це поле порожнім</label>
+              <input type="text" name="honeypot" tabindex="-1" autocomplete="off">
+            </div>
+            <input type="hidden" name="lead_type" value="contact">
+            <input type="text" name="name" placeholder="Ваше ім'я" required>
+            <input type="text" name="phone_number" placeholder="Ваш телефон" pattern="^[\\+\\d\\s\\-\\(\\)]+$" required>
+            <select name="contact_method" required>
+              <option value="" disabled selected>Спосіб зв'язку</option>
+              <option value="telegram">Telegram</option>
+              <option value="viber">Viber</option>
+              <option value="phone">Телефон</option>
+            </select>
+            <button type="submit">Відправити</button>
+          </form>
+        `;
+      }
+
+      leadContainer.innerHTML = formHtml + `
         <div class="form-message" style="margin-top: 8px; font-weight: bold; display: none; font-size: 13px;"></div>
       `;
       container.appendChild(leadContainer);

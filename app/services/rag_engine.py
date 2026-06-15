@@ -152,6 +152,7 @@ class RAGEngine:
         product_facts: list[str] = []
         extracted_links: list[dict[str, str]] = []
         requires_lead: bool = False
+        lead_form_type = None
 
         intent_type = intent_data.get("intent", INTENT_FAQ)
         product_name = intent_data.get("product_name")
@@ -191,6 +192,7 @@ class RAGEngine:
             system_instructions = res.system_instructions
             extracted_links = res.extracted_links
             requires_lead = res.requires_lead
+            lead_form_type = res.lead_form_type
             intent_type = res.new_intent_type or intent_type
 
             if intent_type == INTENT_SEARCH:
@@ -209,12 +211,14 @@ class RAGEngine:
             system_instructions = res.system_instructions
             extracted_links = res.extracted_links
             requires_lead = res.requires_lead
+            lead_form_type = res.lead_form_type
 
         return IntentContextResult(
             product_facts=product_facts,
             system_instructions=system_instructions,
             extracted_links=extracted_links,
             requires_lead=requires_lead,
+            lead_form_type=lead_form_type,
         )
 
     async def _try_capture_lead(
@@ -244,6 +248,7 @@ class RAGEngine:
                     sources=[],
                     extracted_links=links,
                     requires_lead=False,
+                    lead_form_type=None,
                     extended_user_message="",
                 )
             except Exception:
@@ -255,6 +260,7 @@ class RAGEngine:
                     sources=[],
                     extracted_links=[],
                     requires_lead=False,
+                    lead_form_type=None,
                     extended_user_message="",
                 )
         return False, None
@@ -265,7 +271,7 @@ class RAGEngine:
         """
         Executes the shared pipeline for both sync and stream methods.
         Returns:
-            is_valid, fallback_response, final_context, sources, links, requires_lead, extended_message
+            is_valid, fallback_response, final_context, sources, links, requires_lead, lead_form_type, extended_message
         """
         if not self.guardrails_service.validate_input(question, client_ip=client_ip):
             return PipelineContext(
@@ -275,6 +281,7 @@ class RAGEngine:
                 sources=[],
                 extracted_links=[],
                 requires_lead=False,
+                lead_form_type=None,
                 extended_user_message="",
             )
 
@@ -342,11 +349,13 @@ class RAGEngine:
         if isinstance(intent_results, BaseException):
             logger.error(f"Intent context retrieval failed: {intent_results}")
             product_facts, system_instructions, extracted_links, requires_lead = [], [], [], False
+            lead_form_type = None
         else:
             product_facts = intent_results.product_facts
             system_instructions = intent_results.system_instructions
             extracted_links = intent_results.extracted_links
             requires_lead = intent_results.requires_lead
+            lead_form_type = intent_results.lead_form_type
 
         prepended_context: list[str] = []
         if system_instructions:
@@ -365,6 +374,7 @@ class RAGEngine:
             sources=list(sources),
             extracted_links=extracted_links,
             requires_lead=requires_lead,
+            lead_form_type=lead_form_type,
             extended_user_message=extended_user_message,
         )
 
@@ -384,6 +394,7 @@ class RAGEngine:
                     has_context=False,
                     links=[],
                     requires_lead=False,
+                    lead_form_type=None,
                 )
             else:
                 return RAGResponse(
@@ -392,6 +403,7 @@ class RAGEngine:
                     has_context=False,
                     links=[LinkItem(**link) for link in ctx.extracted_links],
                     requires_lead=False,
+                    lead_form_type=None,
                 )
 
         if not ctx.final_context:
@@ -402,6 +414,7 @@ class RAGEngine:
                 has_context=False,
                 links=[],
                 requires_lead=True,
+                lead_form_type=None,
             )
 
         try:
@@ -424,6 +437,7 @@ class RAGEngine:
                     "has_context": False,
                     "links": [],
                     "requires_lead": True,
+                    "lead_form_type": None,
                 }
             )
 
@@ -437,6 +451,7 @@ class RAGEngine:
                 "has_context": True,
                 "links": ctx.extracted_links,
                 "requires_lead": ctx.requires_lead,
+                "lead_form_type": ctx.lead_form_type,
             }
         )
 
@@ -450,14 +465,20 @@ class RAGEngine:
 
         if not ctx.is_valid:
             meta_payload = json.dumps(
-                {"links": ctx.extracted_links, "requires_lead": False}, ensure_ascii=False
+                {"links": ctx.extracted_links, "requires_lead": False, "lead_form_type": None},
+                ensure_ascii=False,
             )
             yield f"[METADATA] {meta_payload}"
             yield json.dumps({"token": ctx.fallback_response}, ensure_ascii=False)
             return
 
         meta_payload = json.dumps(
-            {"links": ctx.extracted_links, "requires_lead": ctx.requires_lead}, ensure_ascii=False
+            {
+                "links": ctx.extracted_links,
+                "requires_lead": ctx.requires_lead,
+                "lead_form_type": ctx.lead_form_type,
+            },
+            ensure_ascii=False,
         )
         yield f"[METADATA] {meta_payload}"
 

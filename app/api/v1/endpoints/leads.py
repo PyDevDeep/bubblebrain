@@ -26,16 +26,16 @@ MAX_PAYLOAD_SIZE = 2048
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type(httpx.RequestError),
 )
-async def send_telegram_notification(lead_id: int, message: str) -> None:
+async def send_telegram_notification(lead_id: int, message: str, alert_type: str) -> None:
     settings = get_settings()
     telegram_service = TelegramService(settings)
-    await telegram_service.send_alert(message, alert_type="lead")
+    await telegram_service.send_alert(message, alert_type=alert_type)
 
 
-async def process_lead_background(lead_id: int, message: str) -> None:
+async def process_lead_background(lead_id: int, message: str, alert_type: str = "lead") -> None:
     async with AsyncSessionLocal() as session:
         try:
-            await send_telegram_notification(lead_id, message)
+            await send_telegram_notification(lead_id, message, alert_type)
             # Оновлюємо статус на sent
             lead = await session.get(Lead, lead_id)
             if lead:
@@ -91,8 +91,11 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
     async with AsyncSessionLocal() as session:
         db_lead = Lead(
             name=lead_data.name,
+            surname=lead_data.surname,
             phone_number=lead_data.phone_number,
             contact_method=lead_data.contact_method,
+            lead_type=lead_data.lead_type,
+            delivery_address=lead_data.delivery_address,
             notification_status="pending",
         )
         session.add(db_lead)
@@ -100,13 +103,22 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
         await session.refresh(db_lead)
         lead_id = int(db_lead.id)  # type: ignore
 
-    message = (
-        f"🚨 <b>Новий лід з форми зв'язку!</b>\n\n"
-        f"👤 <b>Ім'я:</b> {lead_data.name}\n"
-        f"📞 <b>Контакт:</b> <code>{lead_data.phone_number}</code>\n"
-        f"📱 <b>Спосіб:</b> {lead_data.contact_method}"
-    )
-
-    background_tasks.add_task(process_lead_background, lead_id, message)
+    if lead_data.lead_type == "checkout":
+        message = (
+            f"🛒 <b>Нове ЗАМОВЛЕННЯ (Hot Lead)!</b>\n\n"
+            f"👤 <b>Ім'я:</b> {lead_data.name} {lead_data.surname or ''}\n"
+            f"📞 <b>Контакт:</b> <code>{lead_data.phone_number}</code>\n"
+            f"📱 <b>Спосіб:</b> {lead_data.contact_method}\n"
+            f"📍 <b>Адреса доставки:</b> {lead_data.delivery_address or 'Не вказана'}"
+        )
+        background_tasks.add_task(process_lead_background, lead_id, message, "hot_lead")
+    else:
+        message = (
+            f"🚨 <b>Новий лід з форми зв'язку!</b>\n\n"
+            f"👤 <b>Ім'я:</b> {lead_data.name}\n"
+            f"📞 <b>Контакт:</b> <code>{lead_data.phone_number}</code>\n"
+            f"📱 <b>Спосіб:</b> {lead_data.contact_method}"
+        )
+        background_tasks.add_task(process_lead_background, lead_id, message, "lead")
 
     return {"status": "success", "message": "Lead received"}

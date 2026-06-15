@@ -105,7 +105,7 @@ async def test_send_telegram_notification_retry_limit() -> None:
 
         with pytest.raises(RetryError):
             # This should retry exactly 3 times as configured
-            await send_telegram_notification(lead_id=1, message="Test retry")
+            await send_telegram_notification(lead_id=1, message="Test retry", alert_type="lead")
 
         assert mock_send_alert.call_count == 3
 
@@ -213,7 +213,7 @@ async def test_process_lead_background_success(
 
     await process_lead_background(1, "Test Message")
 
-    mock_send_tg.assert_called_once_with(1, "Test Message")
+    mock_send_tg.assert_called_once_with(1, "Test Message", "lead")
     assert mock_lead.notification_status == "sent"
     mock_session.commit.assert_called_once()
 
