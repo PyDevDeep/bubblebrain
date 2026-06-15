@@ -8,8 +8,14 @@ from tenacity import RetryError
 
 from app.api.v1.endpoints.leads import send_telegram_notification
 from app.main import app
+from app.middleware.rate_limiter import limiter
 from app.schemas.lead import ContactFormLead
 from app.services.telegram_service import TelegramService
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limit() -> None:
+    limiter._storage.reset()
 
 
 # 1. Pydantic schema tests
@@ -49,12 +55,12 @@ async def test_telegram_service_success() -> None:
 
     with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
         mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
+        mock_response.status_code = 200
         mock_post.return_value = mock_response
 
-        await service.send_alert("Test message")
+        result = await service.send_alert("Test message")
+        assert result is True
         mock_post.assert_called_once()
-        mock_response.raise_for_status.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -65,13 +71,13 @@ async def test_telegram_service_http_error() -> None:
 
     with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
         mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "HTTP Error", request=MagicMock(), response=MagicMock()
-        )
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
         mock_post.return_value = mock_response
 
-        with pytest.raises(httpx.HTTPStatusError):
-            await service.send_alert("Test message")
+        result = await service.send_alert("Test message")
+        assert result is False
+        assert mock_post.call_count == 3
 
 
 @pytest.mark.asyncio
@@ -83,8 +89,9 @@ async def test_telegram_service_network_error() -> None:
     with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
         mock_post.side_effect = httpx.ConnectError("Network Error")
 
-        with pytest.raises(httpx.ConnectError):
-            await service.send_alert("Test message")
+        result = await service.send_alert("Test message")
+        assert result is False
+        assert mock_post.call_count == 3
 
 
 # 3. Tenacity tests
