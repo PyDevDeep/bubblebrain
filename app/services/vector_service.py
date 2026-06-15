@@ -50,7 +50,7 @@ class VectorService:
             else:
                 logger.info("Index exists", index_name=self.index_name)
         except PineconeException as e:  # type: ignore
-            logger.error("Failed to...", error=str(e))  # type: ignore
+            logger.error("Failed to ensure Pinecone index exists", error=str(e))  # type: ignore
             raise
 
     async def upsert_vectors(self, vectors: list[tuple[str, list[float], dict[str, Any]]]) -> int:
@@ -79,7 +79,7 @@ class VectorService:
                 if i + batch_size < len(vectors):
                     await asyncio.sleep(0.5)
             except PineconeException as e:  # type: ignore
-                logger.error("Failed to...", error=str(e))  # type: ignore
+                logger.error("Failed to upsert vectors in Pinecone", error=str(e))  # type: ignore
                 raise
 
         return total_upserted
@@ -113,7 +113,7 @@ class VectorService:
                     )
             return results
         except PineconeException as e:  # type: ignore
-            logger.error("Failed to...", error=str(e))  # type: ignore
+            logger.error("Failed to query similar vectors in Pinecone", error=str(e))  # type: ignore
             raise
 
     def delete_by_source(self, source: str) -> None:
@@ -124,5 +124,5 @@ class VectorService:
             self.index.delete(filter={"source": source})
             logger.info("Deleted vectors by source", source=source)
         except PineconeException as e:  # type: ignore
-            logger.error("Failed to...", error=str(e))  # type: ignore
+            logger.error("Failed to delete vectors by source in Pinecone", error=str(e))  # type: ignore
             raise

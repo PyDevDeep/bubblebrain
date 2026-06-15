@@ -404,11 +404,28 @@ class RAGEngine:
                 requires_lead=True,
             )
 
-        answer = await self.openai_service.get_chat_completion(
-            system_prompt=RAG_SYSTEM_PROMPT,
-            user_message=ctx.extended_user_message.strip(),
-            context_chunks=ctx.final_context,
-        )
+        try:
+            answer = await self.openai_service.get_chat_completion(
+                system_prompt=RAG_SYSTEM_PROMPT,
+                user_message=ctx.extended_user_message.strip(),
+                context_chunks=ctx.final_context,
+            )
+        except Exception as e:
+            logger.error(
+                "OpenAI sync completion completely failed",
+                error=str(e),
+                extra={"session_id": session_id},
+            )
+            answer = MSG_GUARDRAIL_FAILED
+            return RAGResponse.model_validate(
+                {
+                    "answer": answer,
+                    "sources": [],
+                    "has_context": False,
+                    "links": [],
+                    "requires_lead": True,
+                }
+            )
 
         await self.chat_memory_service.add_interaction(session_id, question, answer)
 
@@ -460,7 +477,7 @@ class RAGEngine:
 
             full_response = "".join(response_tokens)
         except Exception:
-            logger.exception("OpenAI Stream failed")
+            logger.exception("OpenAI Stream failed", extra={"session_id": session_id})
             yield json.dumps({"token": MSG_STREAM_FAILED}, ensure_ascii=False)
             full_response = "".join(response_tokens) + MSG_STREAM_FAILED
         finally:
