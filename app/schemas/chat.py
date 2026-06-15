@@ -1,4 +1,5 @@
 import re
+from dataclasses import dataclass
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -45,3 +46,23 @@ class ChatResponse(RAGResponse):
 class StreamEvent(BaseModel):
     event: str
     data: str
+
+
+@dataclass
+class PipelineContext:
+    is_valid: bool
+    fallback_response: str | None
+    final_context: list[str]
+    sources: list[str]
+    extracted_links: list[dict[str, str]]
+    requires_lead: bool
+    extended_user_message: str
+
+
+@dataclass
+class IntentContextResult:
+    product_facts: list[str]
+    system_instructions: list[str]
+    extracted_links: list[dict[str, str]]
+    requires_lead: bool
+    new_intent_type: str | None = None
