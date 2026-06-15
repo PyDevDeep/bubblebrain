@@ -1,37 +1,41 @@
-from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.schemas.cache import CacheEntry
-from app.schemas.scraper import PriceComparisonResult, ScrapedProduct
+from app.schemas.scraper import DatacompProduct
 from app.services.price_comparator import PriceComparator
 
 
 @pytest.fixture
-def woo_service_mock():
+def woo_service_mock() -> AsyncMock:
     return AsyncMock()
 
 
 @pytest.fixture
-def scraper_service_mock():
+def scraper_service_mock() -> AsyncMock:
     return AsyncMock()
 
 
 @pytest.fixture
-def cache_service_mock():
+def cache_service_mock() -> AsyncMock:
     return AsyncMock()
 
 
 @pytest.fixture
-def settings_mock():
+def settings_mock() -> MagicMock:
     mock = MagicMock()
     mock.margin_threshold = 200.0
     return mock
 
 
 @pytest.fixture
-def price_comparator(woo_service_mock, scraper_service_mock, cache_service_mock, settings_mock):
+def price_comparator(
+    woo_service_mock: AsyncMock,
+    scraper_service_mock: AsyncMock,
+    cache_service_mock: AsyncMock,
+    settings_mock: MagicMock,
+) -> PriceComparator:
     return PriceComparator(
         woo_service=woo_service_mock,
         scraper_service=scraper_service_mock,
@@ -56,7 +60,7 @@ def price_comparator(woo_service_mock, scraper_service_mock, cache_service_mock,
         (None, "Уточнюється у постачальника"),
     ],
 )
-def test_map_availability(price_comparator, dc_status, expected):
+def test_map_availability(price_comparator: PriceComparator, dc_status: Any, expected: str) -> None:
     assert price_comparator.map_availability(dc_status) == expected
 
 
@@ -65,8 +69,11 @@ def test_map_availability(price_comparator, dc_status, expected):
 
 @pytest.mark.asyncio
 async def test_compare_woo_not_found(
-    price_comparator, woo_service_mock, scraper_service_mock, cache_service_mock
-):
+    price_comparator: PriceComparator,
+    woo_service_mock: AsyncMock,
+    scraper_service_mock: AsyncMock,
+    cache_service_mock: AsyncMock,
+) -> None:
     """Сценарій 2.1: Товар не знайдено на нашому сайті (WooCommerce)"""
     woo_service_mock.search_product_async.return_value = None
 
@@ -83,8 +90,11 @@ async def test_compare_woo_not_found(
 
 @pytest.mark.asyncio
 async def test_compare_woo_found_no_sku(
-    price_comparator, woo_service_mock, scraper_service_mock, cache_service_mock
-):
+    price_comparator: PriceComparator,
+    woo_service_mock: AsyncMock,
+    scraper_service_mock: AsyncMock,
+    cache_service_mock: AsyncMock,
+) -> None:
     """Сценарій 2.2: Товар знайдено на Woo, але без SKU"""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = ""
@@ -107,8 +117,11 @@ async def test_compare_woo_found_no_sku(
 
 @pytest.mark.asyncio
 async def test_compare_cache_hit(
-    price_comparator, woo_service_mock, scraper_service_mock, cache_service_mock
-):
+    price_comparator: PriceComparator,
+    woo_service_mock: AsyncMock,
+    scraper_service_mock: AsyncMock,
+    cache_service_mock: AsyncMock,
+) -> None:
     """Сценарій 2.3: Кеш-хіт (Cache Hit) для звичайного пошуку"""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
@@ -132,8 +145,11 @@ async def test_compare_cache_hit(
 
 @pytest.mark.asyncio
 async def test_compare_checkout_forces_scrape(
-    price_comparator, woo_service_mock, scraper_service_mock, cache_service_mock
-):
+    price_comparator: PriceComparator,
+    woo_service_mock: AsyncMock,
+    scraper_service_mock: AsyncMock,
+    cache_service_mock: AsyncMock,
+) -> None:
     """Сценарій 2.4: Пробивання кешу при оформленні замовлення (Checkout)"""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
@@ -145,12 +161,11 @@ async def test_compare_checkout_forces_scrape(
     cache_entry.is_expired.return_value = False
     cache_service_mock.get.return_value = cache_entry
 
-    scrape_result = ScrapedProduct(
-        product_name="Datacomp Product",
+    scrape_result = DatacompProduct(
+        name="Datacomp Product",
         price_eur=20.0,
         price_uah=750.0,
         availability_status="na objednávku",
-        delivery_time_description="Авто",
         url="http://datacomp",
     )
     scraper_service_mock.scrape_datacomp.return_value = scrape_result
@@ -166,8 +181,11 @@ async def test_compare_checkout_forces_scrape(
 
 @pytest.mark.asyncio
 async def test_compare_margin_ok(
-    price_comparator, woo_service_mock, scraper_service_mock, cache_service_mock
-):
+    price_comparator: PriceComparator,
+    woo_service_mock: AsyncMock,
+    scraper_service_mock: AsyncMock,
+    cache_service_mock: AsyncMock,
+) -> None:
     """Сценарій 2.5: Перевірка маржі — маржа в нормі"""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
@@ -175,12 +193,11 @@ async def test_compare_margin_ok(
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_service_mock.get.return_value = None
-    scrape_result = ScrapedProduct(
-        product_name="P",
+    scrape_result = DatacompProduct(
+        name="P",
         price_eur=20.0,
         price_uah=750.0,
         availability_status="skladom",
-        delivery_time_description="Авто",
         url="",
     )
     scraper_service_mock.scrape_datacomp.return_value = scrape_result
@@ -193,8 +210,11 @@ async def test_compare_margin_ok(
 
 @pytest.mark.asyncio
 async def test_compare_low_margin(
-    price_comparator, woo_service_mock, scraper_service_mock, cache_service_mock
-):
+    price_comparator: PriceComparator,
+    woo_service_mock: AsyncMock,
+    scraper_service_mock: AsyncMock,
+    cache_service_mock: AsyncMock,
+) -> None:
     """Сценарій 2.6: Перевірка маржі — низька маржа (Low Margin)"""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
@@ -203,12 +223,11 @@ async def test_compare_low_margin(
 
     cache_service_mock.get.return_value = None
     # 1000 - 900 = 100 < 200
-    scrape_result = ScrapedProduct(
-        product_name="P",
+    scrape_result = DatacompProduct(
+        name="P",
         price_eur=20.0,
         price_uah=900.0,
         availability_status="skladom",
-        delivery_time_description="Авто",
         url="",
     )
     scraper_service_mock.scrape_datacomp.return_value = scrape_result
@@ -222,8 +241,11 @@ async def test_compare_low_margin(
 
 @pytest.mark.asyncio
 async def test_compare_checkout_margin_issue(
-    price_comparator, woo_service_mock, scraper_service_mock, cache_service_mock
-):
+    price_comparator: PriceComparator,
+    woo_service_mock: AsyncMock,
+    scraper_service_mock: AsyncMock,
+    cache_service_mock: AsyncMock,
+) -> None:
     """Сценарій 2.7: Перевірка маржі під час Checkout — проблема з маржею"""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
@@ -231,12 +253,11 @@ async def test_compare_checkout_margin_issue(
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_service_mock.get.return_value = None
-    scrape_result = ScrapedProduct(
-        product_name="P",
+    scrape_result = DatacompProduct(
+        name="P",
         price_eur=20.0,
         price_uah=900.0,
         availability_status="skladom",
-        delivery_time_description="Авто",
         url="",
     )
     scraper_service_mock.scrape_datacomp.return_value = scrape_result
@@ -250,8 +271,11 @@ async def test_compare_checkout_margin_issue(
 
 @pytest.mark.asyncio
 async def test_compare_scraper_failed(
-    price_comparator, woo_service_mock, scraper_service_mock, cache_service_mock
-):
+    price_comparator: PriceComparator,
+    woo_service_mock: AsyncMock,
+    scraper_service_mock: AsyncMock,
+    cache_service_mock: AsyncMock,
+) -> None:
     """Сценарій 2.8: Помилка скрапера (Scraper Failed)"""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
