@@ -98,7 +98,7 @@ async def test_telegram_service_network_error() -> None:
 @pytest.mark.asyncio
 async def test_send_telegram_notification_retry_limit() -> None:
     with patch(
-        "app.api.v1.endpoints.leads.telegram_service.send_alert", new_callable=AsyncMock
+        "app.services.telegram_service.TelegramService.send_alert", new_callable=AsyncMock
     ) as mock_send_alert:
         # Mock telegram service to always raise ConnectError
         mock_send_alert.side_effect = httpx.ConnectError("Network Error")

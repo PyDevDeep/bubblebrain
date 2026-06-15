@@ -17,8 +17,6 @@ from app.schemas.lead import ContactFormLead
 from app.services.telegram_service import TelegramService
 
 leads_router = APIRouter()
-settings = get_settings()
-telegram_service = TelegramService(settings)
 
 MAX_PAYLOAD_SIZE = 2048
 
@@ -29,6 +27,8 @@ MAX_PAYLOAD_SIZE = 2048
     retry=retry_if_exception_type(httpx.RequestError),
 )
 async def send_telegram_notification(lead_id: int, message: str) -> None:
+    settings = get_settings()
+    telegram_service = TelegramService(settings)
     await telegram_service.send_alert(message)
 
 

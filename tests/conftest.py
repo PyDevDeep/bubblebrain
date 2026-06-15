@@ -1,4 +1,14 @@
+import os
 from unittest.mock import Mock
+
+os.environ["OPENAI_API_KEY"] = "sk-fake-key"
+os.environ["PINECONE_API_KEY"] = "fake-key"
+os.environ["PINECONE_ENVIRONMENT"] = "fake-env"
+os.environ["API_KEY_SECRET"] = "fake-secret"
+os.environ["TELEGRAM_BOT_TOKEN"] = "fake-token"
+os.environ["TELEGRAM_CHAT_ID"] = "123"
+os.environ["WOO_CK"] = "ck"
+os.environ["WOO_CS"] = "cs"
 
 import pytest
 

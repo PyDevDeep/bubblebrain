@@ -16,6 +16,8 @@ def service():
 async def test_get_history(mock_session_local, service):
     # Arrange
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
+    mock_session.add_all = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
     mock_result = MagicMock()
@@ -43,6 +45,8 @@ async def test_get_history(mock_session_local, service):
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
 async def test_add_message(mock_session_local, mock_commit, service):
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
+    mock_session.add_all = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
     await service.add_message("test", "user", "Hi")
@@ -56,6 +60,8 @@ async def test_add_message(mock_session_local, mock_commit, service):
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
 async def test_add_message_error(mock_session_local, mock_commit, service):
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
+    mock_session.add_all = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
     mock_commit.side_effect = Exception("DB error")
 
@@ -69,6 +75,8 @@ async def test_add_message_error(mock_session_local, mock_commit, service):
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
 async def test_add_interaction(mock_session_local, mock_commit, service):
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
+    mock_session.add_all = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
     await service.add_interaction("test", "Hi user", "Hi bot")
@@ -82,6 +90,8 @@ async def test_add_interaction(mock_session_local, mock_commit, service):
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
 async def test_add_interaction_error(mock_session_local, mock_commit, service):
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
+    mock_session.add_all = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
     mock_commit.side_effect = Exception("DB error")
 
@@ -95,6 +105,8 @@ async def test_add_interaction_error(mock_session_local, mock_commit, service):
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
 async def test_clear_history(mock_session_local, mock_commit, service):
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
+    mock_session.add_all = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
     await service.clear_history("test")
@@ -108,6 +120,8 @@ async def test_clear_history(mock_session_local, mock_commit, service):
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
 async def test_clear_history_error(mock_session_local, mock_commit, service):
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
+    mock_session.add_all = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
     mock_commit.side_effect = Exception("DB error")
 
