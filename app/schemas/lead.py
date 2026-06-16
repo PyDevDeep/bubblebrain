@@ -14,6 +14,7 @@ class ContactFormLead(BaseModel):
     lead_type: Literal["contact", "checkout"] = Field(default="contact")
     delivery_address: str | None = Field(default=None, max_length=255)
     honeypot: str | None = Field(default=None, max_length=50)
+    session_id: str | None = Field(default=None, max_length=100)
 
     @field_validator("phone_number", mode="before")
     @classmethod

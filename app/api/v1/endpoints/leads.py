@@ -112,28 +112,40 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
             lead_type=lead_data.lead_type,
             delivery_address=lead_data.delivery_address,
             notification_status="pending",
+            session_id=lead_data.session_id,
         )
         session.add(db_lead)
         await commit_with_retry(session)
         await session.refresh(db_lead)
         lead_id = int(db_lead.id)  # type: ignore
 
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo("Europe/Kiev")
+    now_str = datetime.now(tz).strftime("%d.%m.%Y %H:%M")
+    client_ip = request.client.host if request.client else "Unknown"
+
     if lead_data.lead_type == "checkout":
         message = (
-            f"🛒 <b>Нове ЗАМОВЛЕННЯ (Hot Lead) [ID: {lead_id}]</b>\n\n"
-            f"👤 <b>Ім'я:</b> {lead_data.name} {lead_data.surname or ''}\n"
-            f"📞 <b>Контакт:</b> <code>{lead_data.phone_number}</code>\n"
-            f"📱 <b>Спосіб:</b> {lead_data.contact_method}\n"
-            f"📍 <b>Адреса доставки:</b> {lead_data.delivery_address or 'Не вказана'}\n\n"
+            f"🛒 <b>Нове ЗАМОВЛЕННЯ з Бота (Hot Lead) {lead_id}</b>\n"
+            f"📅 <b>Дата:</b> {now_str}\n\n"
+            f"👨 <b>Ім'я:</b> {lead_data.name} {lead_data.surname or ''}\n"
+            f"📞 <b>Телефон:</b> <code>{lead_data.phone_number}</code>\n"
+            f"📱 <b>Спосіб зв'язку:</b> {lead_data.contact_method}\n"
+            f"🚛 <b>Адреса доставки:</b> {lead_data.delivery_address or 'Не вказана'}\n\n"
+            f"🥷 <b>IP:</b> {client_ip}\n\n"
             f"#HOT_LEAD #ID{lead_id}"
         )
         background_tasks.add_task(process_lead_background, lead_id, message, "hot_lead")
     else:
         message = (
-            f"🔥 <b>НОВИЙ ЛІД З БОТА [ID: {lead_id}]</b>\n\n"
-            f"👤 <b>Ім'я:</b> {lead_data.name}\n"
-            f"📞 <b>Контакт:</b> <code>{lead_data.phone_number}</code>\n"
-            f"📱 <b>Спосіб:</b> {lead_data.contact_method}\n\n"
+            f"🔥 <b>НОВИЙ ЛІД З БОТА {lead_id}</b>\n"
+            f"📅 <b>Дата:</b> {now_str}\n\n"
+            f"👨 <b>Ім'я:</b> {lead_data.name}\n"
+            f"📞 <b>Телефон:</b> <code>{lead_data.phone_number}</code>\n"
+            f"📱 <b>Спосіб зв'язку:</b> {lead_data.contact_method}\n\n"
+            f"🥷 <b>IP:</b> {client_ip}\n\n"
             f"#БОТ_ЛІД #ID{lead_id}"
         )
         background_tasks.add_task(process_lead_background, lead_id, message, "lead")
