@@ -10,7 +10,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = "sqlite+aiosqlite:///./leads.db"
+DATABASE_URL = "sqlite+aiosqlite:///./data/leads.db"
 
 engine = create_async_engine(DATABASE_URL, echo=False)
 

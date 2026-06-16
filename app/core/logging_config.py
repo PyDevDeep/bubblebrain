@@ -37,7 +37,9 @@ def setup_logging(log_level: str) -> None:
 
     formatter_processors: list[Any] = [
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
-        structlog.processors.JSONRenderer(),  # Можна змінити на ConsoleRenderer для читабельності
+        structlog.processors.JSONRenderer(
+            ensure_ascii=False
+        ),  # Можна змінити на ConsoleRenderer для читабельності
     ]
 
     formatter = structlog.stdlib.ProcessorFormatter(
