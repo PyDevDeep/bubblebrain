@@ -122,7 +122,7 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    tz = ZoneInfo("Europe/Kiev")
+    tz = ZoneInfo("Europe/Kyiv")
     now_str = datetime.now(tz).strftime("%d.%m.%Y %H:%M")
     client_ip = request.client.host if request.client else "Unknown"
 
