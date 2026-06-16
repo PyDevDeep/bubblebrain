@@ -213,7 +213,20 @@ async def test_process_lead_background_success(
 
     await process_lead_background(1, "Test Message")
 
-    mock_send_tg.assert_called_once_with(1, "Test Message", "lead")
+    mock_send_tg.assert_called_once_with(
+        1,
+        "Test Message",
+        "lead",
+        reply_markup={
+            "inline_keyboard": [
+                [
+                    {"text": "✅ Успіх (Продано)", "callback_data": "lead_status:1:success"},
+                    {"text": "❌ Відмова", "callback_data": "lead_status:1:decline"},
+                ],
+                [{"text": "⏳ В процесі", "callback_data": "lead_status:1:in_progress"}],
+            ]
+        },
+    )
     assert mock_lead.notification_status == "sent"
     mock_session.commit.assert_called_once()
 

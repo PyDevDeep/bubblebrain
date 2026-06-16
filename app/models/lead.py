@@ -16,4 +16,7 @@ class Lead(Base):
     lead_type = Column(String(20), default="contact")  # contact, checkout
     delivery_address = Column(String(255), nullable=True)
     notification_status = Column(String(20), default="pending")  # pending, sent, failed
+    status = Column(String(20), default="new")  # new, success, decline, in_progress
+    session_id = Column(String(100), nullable=True, index=True)
+    woo_order_id = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))

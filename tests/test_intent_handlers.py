@@ -42,12 +42,13 @@ async def test_product_checkout_intent_checkout(
         system_instructions=[],
         product_facts=[],
         extracted_links=[],
+        session_id="test_sess",
     )
 
     # Assert
     assert res.requires_lead is True
     assert len(res.extracted_links) == 3
-    assert res.extracted_links[0]["url"] == "http://woo"
+    assert res.extracted_links[0]["url"] == "http://woo?bot_source=direct&bot_chat_id=test_sess"
     assert res.extracted_links[1]["url"] == "http://tg"
 
 
@@ -77,6 +78,7 @@ async def test_product_checkout_intent_alert(
         system_instructions=[],
         product_facts=[],
         extracted_links=[],
+        session_id="test_sess",
     )
 
     # Assert
@@ -106,6 +108,7 @@ async def test_search_intent_strict_success(mock_price_comparator):
         system_instructions=[],
         product_facts=[],
         extracted_links=[],
+        session_id="test_sess",
     )
 
     # Assert
@@ -139,6 +142,7 @@ async def test_search_intent_fallback_broad(mock_price_comparator):
         system_instructions=[],
         product_facts=[],
         extracted_links=[],
+        session_id="test_sess",
     )
 
     # Assert
@@ -162,6 +166,7 @@ async def test_search_intent_nothing_found(mock_price_comparator):
         system_instructions=[],
         product_facts=[],
         extracted_links=[],
+        session_id="test_sess",
     )
 
     # Assert

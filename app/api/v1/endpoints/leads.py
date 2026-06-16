@@ -1,3 +1,5 @@
+from typing import Any
+
 import httpx
 import sentry_sdk
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
@@ -26,16 +28,29 @@ MAX_PAYLOAD_SIZE = 2048
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type(httpx.RequestError),
 )
-async def send_telegram_notification(lead_id: int, message: str, alert_type: str) -> None:
+async def send_telegram_notification(
+    lead_id: int, message: str, alert_type: str, reply_markup: dict[str, Any] | None = None
+) -> None:
     settings = get_settings()
     telegram_service = TelegramService(settings)
-    await telegram_service.send_alert(message, alert_type=alert_type)
+    await telegram_service.send_alert(message, alert_type=alert_type, reply_markup=reply_markup)
 
 
 async def process_lead_background(lead_id: int, message: str, alert_type: str = "lead") -> None:
+    reply_markup = {
+        "inline_keyboard": [
+            [
+                {"text": "✅ Успіх (Продано)", "callback_data": f"lead_status:{lead_id}:success"},
+                {"text": "❌ Відмова", "callback_data": f"lead_status:{lead_id}:decline"},
+            ],
+            [{"text": "⏳ В процесі", "callback_data": f"lead_status:{lead_id}:in_progress"}],
+        ]
+    }
     async with AsyncSessionLocal() as session:
         try:
-            await send_telegram_notification(lead_id, message, alert_type)
+            await send_telegram_notification(
+                lead_id, message, alert_type, reply_markup=reply_markup
+            )
             # Оновлюємо статус на sent
             lead = await session.get(Lead, lead_id)
             if lead:
@@ -105,19 +120,21 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
 
     if lead_data.lead_type == "checkout":
         message = (
-            f"🛒 <b>Нове ЗАМОВЛЕННЯ (Hot Lead)!</b>\n\n"
+            f"🛒 <b>Нове ЗАМОВЛЕННЯ (Hot Lead) [ID: {lead_id}]</b>\n\n"
             f"👤 <b>Ім'я:</b> {lead_data.name} {lead_data.surname or ''}\n"
             f"📞 <b>Контакт:</b> <code>{lead_data.phone_number}</code>\n"
             f"📱 <b>Спосіб:</b> {lead_data.contact_method}\n"
-            f"📍 <b>Адреса доставки:</b> {lead_data.delivery_address or 'Не вказана'}"
+            f"📍 <b>Адреса доставки:</b> {lead_data.delivery_address or 'Не вказана'}\n\n"
+            f"#HOT_LEAD #ID{lead_id}"
         )
         background_tasks.add_task(process_lead_background, lead_id, message, "hot_lead")
     else:
         message = (
-            f"🚨 <b>Новий лід з форми зв'язку!</b>\n\n"
+            f"🔥 <b>НОВИЙ ЛІД З БОТА [ID: {lead_id}]</b>\n\n"
             f"👤 <b>Ім'я:</b> {lead_data.name}\n"
             f"📞 <b>Контакт:</b> <code>{lead_data.phone_number}</code>\n"
-            f"📱 <b>Спосіб:</b> {lead_data.contact_method}"
+            f"📱 <b>Спосіб:</b> {lead_data.contact_method}\n\n"
+            f"#БОТ_ЛІД #ID{lead_id}"
         )
         background_tasks.add_task(process_lead_background, lead_id, message, "lead")
 

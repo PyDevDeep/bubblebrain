@@ -31,12 +31,20 @@ class TelegramService:
             "error": settings.telegram_topic_errors,
         }
 
-    async def send_alert(self, message: str, alert_type: str = "general", retries: int = 3) -> bool:
+    async def send_alert(
+        self,
+        message: str,
+        alert_type: str = "general",
+        retries: int = 3,
+        reply_markup: dict[str, Any] | None = None,
+    ) -> bool:
         if not self.base_url or not self.chat_id:
             logger.warning("Telegram credentials missing, alert not sent.")
             return False
 
         payload: dict[str, Any] = {"chat_id": self.chat_id, "text": message, "parse_mode": "HTML"}
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
         topic_id = self.topics.get(alert_type) or self.fallback_topic
         if topic_id:
             payload["message_thread_id"] = topic_id
@@ -109,3 +117,55 @@ class TelegramService:
                     await asyncio.sleep(1)
 
         return False
+
+    async def update_message_reply_markup(
+        self,
+        message_id: int,
+        reply_markup: dict[str, Any] | None = None,
+        chat_id: int | str | None = None,
+    ) -> bool:
+        if not self.token:
+            return False
+
+        target_chat_id = chat_id or self.chat_id
+        url = f"https://api.telegram.org/bot{self.token}/editMessageReplyMarkup"
+        payload: dict[str, Any] = {"chat_id": target_chat_id, "message_id": message_id}
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                resp = await client.post(url, json=payload)
+                return resp.status_code == 200
+            except Exception as e:
+                logger.error(f"Error updating TG message markup: {e}")
+                return False
+
+    async def edit_message_text(
+        self,
+        message_id: int,
+        text: str,
+        reply_markup: dict[str, Any] | None = None,
+        chat_id: int | str | None = None,
+    ) -> bool:
+        if not self.token:
+            return False
+
+        target_chat_id = chat_id or self.chat_id
+        url = f"https://api.telegram.org/bot{self.token}/editMessageText"
+        payload: dict[str, Any] = {
+            "chat_id": target_chat_id,
+            "message_id": message_id,
+            "text": text,
+            "parse_mode": "HTML",
+        }
+        if reply_markup:
+            payload["reply_markup"] = reply_markup
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                resp = await client.post(url, json=payload)
+                return resp.status_code == 200
+            except Exception as e:
+                logger.error(f"Error editing TG message: {e}")
+                return False

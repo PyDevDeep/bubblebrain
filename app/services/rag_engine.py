@@ -25,7 +25,7 @@ from app.core.constants import (
     REGEX_PRODUCT_NAME_HISTORY,
 )
 from app.core.logging_config import get_logger
-from app.schemas.chat import IntentContextResult, LeadData, LinkItem, PipelineContext, RAGResponse
+from app.schemas.chat import IntentContextResult, LinkItem, PipelineContext, RAGResponse
 from app.services.category_manager import CategoryManager
 from app.services.chat_memory_service import ChatMemoryService
 from app.services.guardrails_service import GuardrailsService
@@ -197,7 +197,7 @@ class RAGEngine:
         return context_chunks, sources, {"embedding_ms": emb_time, "retrieval_ms": ret_time}
 
     async def _get_intent_context(
-        self, intent_data: dict[str, Any], history: list[dict[str, str]]
+        self, intent_data: dict[str, Any], history: list[dict[str, str]], session_id: str
     ) -> IntentContextResult:
         """
         Orchestrates intent handlers and builds the contextual facts and system instructions.
@@ -241,6 +241,7 @@ class RAGEngine:
                 system_instructions=system_instructions,
                 product_facts=product_facts,
                 extracted_links=extracted_links,
+                session_id=session_id,
             )
             product_facts = res.product_facts
             system_instructions = res.system_instructions
@@ -260,6 +261,7 @@ class RAGEngine:
                 system_instructions=system_instructions,
                 product_facts=product_facts,
                 extracted_links=extracted_links,
+                session_id=session_id,
             )
             product_facts = res.product_facts
             system_instructions = res.system_instructions
@@ -293,10 +295,63 @@ class RAGEngine:
             phone_number = phone_match.group(0)
             logger.info("Direct lead captured", session_id=session_id)
             try:
-                lead = LeadData(phone=phone_number)
-                lead_success = await self.telegram_service.send_lead(
-                    lead, context_info=f"User query: '{question}'. Session: {session_id}"
+                from app.core.db import AsyncSessionLocal, commit_with_retry
+                from app.models.lead import Lead
+
+                async with AsyncSessionLocal() as session:
+                    db_lead = Lead(
+                        name="Клієнт з чату",
+                        phone_number=phone_number,
+                        contact_method="chat",
+                        lead_type="contact",
+                        session_id=session_id,
+                        status="new",
+                        notification_status="pending",
+                    )
+                    session.add(db_lead)
+                    await commit_with_retry(session)
+                    await session.refresh(db_lead)
+                    lead_id = int(db_lead.id)  # type: ignore
+
+                message = (
+                    f"🔥 <b>НОВИЙ ЛІД З БОТА [ID: {lead_id}]</b>\n\n"
+                    f"👤 <b>Ім'я:</b> Клієнт з чату\n"
+                    f"📞 <b>Контакт:</b> <code>{phone_number}</code>\n"
+                    f"📱 <b>Спосіб:</b> chat\n"
+                    f"💬 <b>Контекст:</b> User query: '{question}'. Session: {session_id}\n\n"
+                    f"#БОТ_ЛІД #ID{lead_id}"
                 )
+                reply_markup = {
+                    "inline_keyboard": [
+                        [
+                            {
+                                "text": "✅ Успіх (Продано)",
+                                "callback_data": f"lead_status:{lead_id}:success",
+                            },
+                            {
+                                "text": "❌ Відмова",
+                                "callback_data": f"lead_status:{lead_id}:decline",
+                            },
+                        ],
+                        [
+                            {
+                                "text": "⏳ В процесі",
+                                "callback_data": f"lead_status:{lead_id}:in_progress",
+                            }
+                        ],
+                    ]
+                }
+
+                lead_success = await self.telegram_service.send_alert(
+                    message, alert_type="lead", reply_markup=reply_markup
+                )
+
+                async with AsyncSessionLocal() as session:
+                    lead = await session.get(Lead, lead_id)
+                    if lead:
+                        lead.notification_status = "sent" if lead_success else "failed"  # type: ignore
+                        await commit_with_retry(session)
+
                 msg = MSG_LEAD_SUCCESS if lead_success else MSG_LEAD_FAILED
                 await self.chat_memory_service.add_interaction(session_id, question, msg)
 
@@ -395,7 +450,9 @@ class RAGEngine:
             return await asyncio.gather(*vector_tasks, return_exceptions=True)
 
         vector_results, intent_results = await asyncio.gather(
-            fetch_vectors(), self._get_intent_context(intent_data, history), return_exceptions=True
+            fetch_vectors(),
+            self._get_intent_context(intent_data, history, session_id),
+            return_exceptions=True,
         )
 
         if not isinstance(vector_results, BaseException):

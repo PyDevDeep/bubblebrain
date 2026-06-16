@@ -53,6 +53,7 @@ class ProductCheckoutIntentHandler:
         system_instructions: list[str],
         product_facts: list[str],
         extracted_links: list[dict[str, str]],
+        session_id: str,
     ) -> IntentContextResult:
         is_checkout = intent_type == INTENT_CHECKOUT
         requires_lead = False
@@ -115,7 +116,11 @@ class ProductCheckoutIntentHandler:
             requires_lead = True
             lead_form_type = "checkout"
             if result.woo_url:
-                extracted_links.append({"text": LINK_CHECKOUT, "url": result.woo_url})
+                connector = "&" if "?" in result.woo_url else "?"
+                tracked_url = (
+                    f"{result.woo_url}{connector}bot_source=direct&bot_chat_id={session_id}"
+                )
+                extracted_links.append({"text": LINK_CHECKOUT, "url": tracked_url})
             extracted_links.append(
                 {"text": LINK_TELEGRAM, "url": self.settings.telegram_contact_url}
             )
@@ -126,8 +131,12 @@ class ProductCheckoutIntentHandler:
         else:
             if result.woo_price:
                 if result.woo_url:
+                    connector = "&" if "?" in result.woo_url else "?"
+                    tracked_url = (
+                        f"{result.woo_url}{connector}bot_source=direct&bot_chat_id={session_id}"
+                    )
                     extracted_links.append(
-                        {"text": f"View {result.product_name}", "url": result.woo_url}
+                        {"text": f"View {result.product_name}", "url": tracked_url}
                     )
                 system_instructions.append(
                     INSTR_PRODUCT_FOUND.format(product_name=result.product_name)
@@ -175,6 +184,7 @@ class SearchIntentHandler:
         system_instructions: list[str],
         product_facts: list[str],
         extracted_links: list[dict[str, str]],
+        session_id: str,
     ) -> IntentContextResult:
         requires_lead = False
         lead_form_type = None
@@ -265,7 +275,11 @@ class SearchIntentHandler:
                     search_facts.append(f"  Characteristics:\n{attr_str}")
 
                 if product.url:
-                    extracted_links.append({"text": product.name, "url": product.url})
+                    connector = "&" if "?" in product.url else "?"
+                    tracked_url = (
+                        f"{product.url}{connector}bot_source=direct&bot_chat_id={session_id}"
+                    )
+                    extracted_links.append({"text": product.name, "url": tracked_url})
 
             search_facts.append(INSTR_NO_DUPLICATE_LINKS)
             product_facts.append("\n".join(search_facts))
