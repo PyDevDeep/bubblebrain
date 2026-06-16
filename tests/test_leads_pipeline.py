@@ -226,6 +226,7 @@ async def test_process_lead_background_success(
                 [{"text": "⏳ В процесі", "callback_data": "lead_status:1:in_progress"}],
             ]
         },
+        session_id=None,
     )
     assert mock_lead.notification_status == "sent"
     mock_session.commit.assert_called_once()
