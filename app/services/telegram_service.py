@@ -37,6 +37,7 @@ class TelegramService:
         alert_type: str = "general",
         retries: int = 3,
         reply_markup: dict[str, Any] | None = None,
+        session_id: str | None = None,
     ) -> bool:
         if not self.base_url or not self.chat_id:
             logger.warning("Telegram credentials missing, alert not sent.")
@@ -49,6 +50,7 @@ class TelegramService:
         if topic_id:
             payload["message_thread_id"] = topic_id
 
+        alert_success = False
         async with httpx.AsyncClient(timeout=10.0) as client:
             for attempt in range(retries):
                 try:
@@ -57,7 +59,8 @@ class TelegramService:
                         json=payload,
                     )
                     if resp.status_code == 200:
-                        return True
+                        alert_success = True
+                        break
                     else:
                         logger.error(
                             f"Failed to send TG alert (Attempt {attempt + 1}/{retries})",
@@ -71,7 +74,19 @@ class TelegramService:
                 if attempt < retries - 1:
                     await asyncio.sleep(1)
 
-        return False
+        if alert_success and session_id:
+            from app.services.chat_memory_service import ChatMemoryService
+
+            chat_memory_service = ChatMemoryService()
+            history = await chat_memory_service.get_history(session_id, limit=100)
+            if history:
+                history_lines = [f"{msg['role'].upper()}: {msg['content']}" for msg in history]
+                history_text = "\n\n".join(history_lines)
+                doc_name = f"chat_history_{session_id}.txt"
+                caption = f"📜 Історія переписки ({session_id})"
+                await self.send_document(doc_name, history_text, caption, alert_type)
+
+        return alert_success
 
     async def send_lead(
         self, lead: LeadData, context_info: str = DEFAULT_LEAD_CONTEXT, retries: int = 3

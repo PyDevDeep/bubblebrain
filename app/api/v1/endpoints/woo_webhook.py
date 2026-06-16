@@ -69,7 +69,9 @@ async def process_woo_order_background(payload: WooOrderPayload) -> None:
                 f"#ID{payload.session_id}"
             )
 
-            alert_success = await telegram_service.send_alert(message, alert_type="conversion")
+            alert_success = await telegram_service.send_alert(
+                message, alert_type="conversion", session_id=payload.session_id
+            )
 
             db_lead.notification_status = "sent" if alert_success else "failed"  # type: ignore
             await commit_with_retry(session)

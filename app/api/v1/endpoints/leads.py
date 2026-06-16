@@ -30,28 +30,16 @@ MAX_PAYLOAD_SIZE = 2048
     retry=retry_if_exception_type(httpx.RequestError),
 )
 async def send_telegram_notification(
-    lead_id: int, message: str, alert_type: str, reply_markup: dict[str, Any] | None = None
+    lead_id: int,
+    message: str,
+    alert_type: str,
+    reply_markup: dict[str, Any] | None = None,
+    session_id: str | None = None,
 ) -> None:
     settings = get_settings()
     telegram_service = TelegramService(settings)
-    await telegram_service.send_alert(message, alert_type=alert_type, reply_markup=reply_markup)
-
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
-    retry=retry_if_exception_type(httpx.RequestError),
-)
-async def send_telegram_document_notification(
-    document_name: str, document_content: str, caption: str, alert_type: str
-) -> None:
-    settings = get_settings()
-    telegram_service = TelegramService(settings)
-    await telegram_service.send_document(
-        document_name=document_name,
-        document_content=document_content,
-        caption=caption,
-        alert_type=alert_type,
+    await telegram_service.send_alert(
+        message, alert_type=alert_type, reply_markup=reply_markup, session_id=session_id
     )
 
 
@@ -69,21 +57,26 @@ async def process_lead_background(
     }
     async with AsyncSessionLocal() as session:
         try:
-            await send_telegram_notification(
-                lead_id, message, alert_type, reply_markup=reply_markup
-            )
-
             if session_id:
                 chat_memory_service = ChatMemoryService()
-                history = await chat_memory_service.get_history(session_id, limit=100)
+                history = await chat_memory_service.get_history(session_id, limit=4)
                 if history:
-                    history_lines = [f"{msg['role'].upper()}: {msg['content']}" for msg in history]
-                    history_text = "\n\n".join(history_lines)
-                    doc_name = f"chat_history_lead_{lead_id}.txt"
-                    caption = f"📜 Історія переписки для ліда #{lead_id}"
-                    await send_telegram_document_notification(
-                        doc_name, history_text, caption, alert_type
-                    )
+                    # Беремо останні 2 повідомлення (запит юзера і відповідь бота)
+                    context_msgs = history[-2:] if len(history) >= 2 else history
+                    context_lines: list[str] = []
+                    for m in context_msgs:
+                        role_icon = "👤" if m["role"] == "user" else "🤖"
+                        text = m["content"]
+                        if len(text) > 200:
+                            text = text[:200] + "..."
+                        context_lines.append(f"{role_icon}: <i>{text}</i>")
+
+                    context_str = "\n".join(context_lines)
+                    message += f"\n\n💬 <b>Контекст (останні повідомлення):</b>\n{context_str}"
+
+            await send_telegram_notification(
+                lead_id, message, alert_type, reply_markup=reply_markup, session_id=session_id
+            )
 
             # Оновлюємо статус на sent
             lead = await session.get(Lead, lead_id)

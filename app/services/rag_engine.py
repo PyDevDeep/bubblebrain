@@ -343,7 +343,7 @@ class RAGEngine:
                 }
 
                 lead_success = await self.telegram_service.send_alert(
-                    message, alert_type="lead", reply_markup=reply_markup
+                    message, alert_type="lead", session_id=session_id, reply_markup=reply_markup
                 )
 
                 async with AsyncSessionLocal() as session:
