@@ -26,7 +26,7 @@
     const scriptUrl = new URL(
       "chat-widget.js",
       currentScript ? currentScript.src : window.location.href,
-    ).href;
+    ).href + "?v=2";
     const script = document.createElement("script");
     script.src = scriptUrl;
     script.onload = () => {
