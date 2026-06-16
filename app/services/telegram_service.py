@@ -169,3 +169,45 @@ class TelegramService:
             except Exception as e:
                 logger.error(f"Error editing TG message: {e}")
                 return False
+
+    async def send_document(
+        self,
+        document_name: str,
+        document_content: str,
+        caption: str = "",
+        alert_type: str = "general",
+    ) -> bool:
+        if not self.token or not self.chat_id:
+            logger.warning("Telegram credentials missing, document not sent.")
+            return False
+
+        url = f"https://api.telegram.org/bot{self.token}/sendDocument"
+
+        data: dict[str, Any] = {"chat_id": self.chat_id, "parse_mode": "HTML"}
+        if caption:
+            data["caption"] = caption
+        topic_id = self.topics.get(alert_type) or self.fallback_topic
+        if topic_id:
+            data["message_thread_id"] = topic_id
+
+        files = {"document": (document_name, document_content.encode("utf-8"), "text/plain")}
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for attempt in range(3):
+                try:
+                    resp = await client.post(url, data=data, files=files)
+                    if resp.status_code == 200:
+                        return True
+                    else:
+                        logger.error(
+                            f"Failed to send TG document (Attempt {attempt + 1}/3)",
+                            response=resp.text,
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Error sending TG document (Attempt {attempt + 1}/3)", error=str(e)
+                    )
+                if attempt < 2:
+                    await asyncio.sleep(1)
+
+        return False

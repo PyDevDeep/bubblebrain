@@ -17,6 +17,7 @@ class WooOrderItem(BaseModel):
     name: str
     quantity: int
     total: str
+    sku: str | None = None
 
 
 class WooOrderPayload(BaseModel):
@@ -52,12 +53,13 @@ async def process_woo_order_background(payload: WooOrderPayload) -> None:
             await commit_with_retry(session)
 
             # Формуємо повідомлення
-            items_str = "\n".join(
-                [
-                    f"- {item.name} (x{item.quantity}) - {item.total} {payload.currency}"
-                    for item in payload.items
-                ]
-            )
+            items_lines: list[str] = []
+            for item in payload.items:
+                sku_info = f" (Арт: {item.sku})" if item.sku else ""
+                items_lines.append(
+                    f"- {item.name}{sku_info} (x{item.quantity}) - {item.total} {payload.currency}"
+                )
+            items_str = "\n".join(items_lines)
             message = (
                 f"🔥 <b>#БОТ_ПРОДАЖ</b> [Замовлення #{payload.order_id}]\n\n"
                 f"👤 <b>Клієнт:</b> {payload.first_name} {payload.last_name}\n"

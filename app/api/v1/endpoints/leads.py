@@ -16,6 +16,7 @@ from app.core.db import AsyncSessionLocal, commit_with_retry
 from app.middleware.rate_limiter import limiter
 from app.models.lead import Lead
 from app.schemas.lead import ContactFormLead
+from app.services.chat_memory_service import ChatMemoryService
 from app.services.telegram_service import TelegramService
 
 leads_router = APIRouter()
@@ -36,7 +37,27 @@ async def send_telegram_notification(
     await telegram_service.send_alert(message, alert_type=alert_type, reply_markup=reply_markup)
 
 
-async def process_lead_background(lead_id: int, message: str, alert_type: str = "lead") -> None:
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(httpx.RequestError),
+)
+async def send_telegram_document_notification(
+    document_name: str, document_content: str, caption: str, alert_type: str
+) -> None:
+    settings = get_settings()
+    telegram_service = TelegramService(settings)
+    await telegram_service.send_document(
+        document_name=document_name,
+        document_content=document_content,
+        caption=caption,
+        alert_type=alert_type,
+    )
+
+
+async def process_lead_background(
+    lead_id: int, message: str, alert_type: str = "lead", session_id: str | None = None
+) -> None:
     reply_markup = {
         "inline_keyboard": [
             [
@@ -51,6 +72,19 @@ async def process_lead_background(lead_id: int, message: str, alert_type: str = 
             await send_telegram_notification(
                 lead_id, message, alert_type, reply_markup=reply_markup
             )
+
+            if session_id:
+                chat_memory_service = ChatMemoryService()
+                history = await chat_memory_service.get_history(session_id, limit=100)
+                if history:
+                    history_lines = [f"{msg['role'].upper()}: {msg['content']}" for msg in history]
+                    history_text = "\n\n".join(history_lines)
+                    doc_name = f"chat_history_lead_{lead_id}.txt"
+                    caption = f"📜 Історія переписки для ліда #{lead_id}"
+                    await send_telegram_document_notification(
+                        doc_name, history_text, caption, alert_type
+                    )
+
             # Оновлюємо статус на sent
             lead = await session.get(Lead, lead_id)
             if lead:
@@ -137,7 +171,9 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
             f"🥷 <b>IP:</b> {client_ip}\n\n"
             f"#HOT_LEAD #ID{lead_id}"
         )
-        background_tasks.add_task(process_lead_background, lead_id, message, "hot_lead")
+        background_tasks.add_task(
+            process_lead_background, lead_id, message, "hot_lead", lead_data.session_id
+        )
     else:
         message = (
             f"🔥 <b>НОВИЙ ЛІД З БОТА {lead_id}</b>\n"
@@ -148,6 +184,8 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
             f"🥷 <b>IP:</b> {client_ip}\n\n"
             f"#БОТ_ЛІД #ID{lead_id}"
         )
-        background_tasks.add_task(process_lead_background, lead_id, message, "lead")
+        background_tasks.add_task(
+            process_lead_background, lead_id, message, "lead", lead_data.session_id
+        )
 
     return {"status": "success", "message": "Lead received"}
