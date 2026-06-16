@@ -60,7 +60,13 @@ class CacheService:
                         updated_at=datetime.fromisoformat(row["updated_at"]),
                     )
         except sqlite3.Error as e:
-            logger.error("SQLite GET error", error=str(e), sku=sku)
+            # --- ДОДАНО FAILSAFE ---
+            if "no such table" in str(e):
+                logger.warning("Cache table missing during GET. Initializing...", sku=sku)
+                await self.initialize()
+            else:
+                logger.error("SQLite GET error", error=str(e), sku=sku)
+            # -----------------------
             return None
 
     async def set(self, entry: CacheEntry) -> None:
@@ -88,7 +94,16 @@ class CacheService:
                 )
                 await db.commit()
         except sqlite3.Error as e:
-            logger.error("SQLite SET error", error=str(e), sku=entry.sku)
+            # --- ДОДАНО FAILSAFE ТА РЕТРАЙ ---
+            if "no such table" in str(e):
+                logger.warning(
+                    "Cache table missing during SET. Initializing and retrying...", sku=entry.sku
+                )
+                await self.initialize()
+                await self.set(entry)  # Повторюємо спробу збереження
+            else:
+                logger.error("SQLite SET error", error=str(e), sku=entry.sku)
+            # ---------------------------------
 
     async def invalidate(self, sku: str) -> None:
         """Примусове видалення запису (наприклад, при аномаліях ціни)."""
