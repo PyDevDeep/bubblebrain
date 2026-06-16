@@ -440,6 +440,7 @@ class ChatWidget {
           for (const [key, value] of formData.entries()) {
             data[key] = value || null;
           }
+          data.session_id = this._sessionId;
 
           const apiHost = this._config.apiHost || "http://localhost:8000/api/v1";
           const response = await fetch(`${apiHost}/leads`, {
