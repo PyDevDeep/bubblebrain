@@ -92,13 +92,17 @@ class RAGEngine:
         stripped_q = question.strip()
 
         # Regex checks for product codes
-        has_sku = bool(re.search(r"\b\d{6}\b", stripped_q))
-        has_part_number = bool(
-            re.search(
-                r"\b(?=[a-zA-Z0-9\-\.]*[a-zA-Z])(?=[a-zA-Z0-9\-\.]*\d)[a-zA-Z0-9\-\.]{5,25}\b",
-                stripped_q,
-            )
+        sku_match = re.search(r"\b\d{6}\b", stripped_q)
+        pn_match = re.search(
+            r"\b(?=[a-zA-Z0-9\-\.]*[a-zA-Z])(?=[a-zA-Z0-9\-\.]*\d)[a-zA-Z0-9\-\.]{5,25}\b",
+            stripped_q,
         )
+
+        extracted_code = None
+        if sku_match:
+            extracted_code = sku_match.group(0)
+        elif pn_match:
+            extracted_code = pn_match.group(0)
 
         faq_triggers = [
             "доставка",
@@ -113,11 +117,11 @@ class RAGEngine:
         needs_llm = any(trigger in stripped_q.lower() for trigger in faq_triggers)
 
         # Fast-path for pure part numbers/SKUs
-        if (has_sku or has_part_number) and not needs_llm and len(stripped_q) < 100:
+        if extracted_code and not needs_llm and len(stripped_q) < 100:
             return {
                 "intent": INTENT_SEARCH,
                 "product_name": None,
-                "strict_query": stripped_q,
+                "strict_query": extracted_code,
                 "broad_query": stripped_q,
                 "category_query": None,
                 "normalized_faq_queries": [],
@@ -148,9 +152,9 @@ class RAGEngine:
             parsed_json = json.loads(cleaned)
 
             # Fallback override
-            if (has_sku or has_part_number) and parsed_json.get("intent") == INTENT_GENERAL:
+            if extracted_code and parsed_json.get("intent") in (INTENT_GENERAL, INTENT_FAQ):
                 parsed_json["intent"] = INTENT_SEARCH
-                parsed_json["strict_query"] = stripped_q
+                parsed_json["strict_query"] = extracted_code
                 parsed_json["broad_query"] = stripped_q
 
             return cast(dict[str, Any], parsed_json)

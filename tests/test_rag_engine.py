@@ -140,6 +140,6 @@ async def test_detect_intent_fallback_override(mock_rag_engine):
     # Assert
     # Should be overridden to search because of the part number
     assert result["intent"] == INTENT_SEARCH
-    assert result["strict_query"] == query
+    assert result["strict_query"] == "90AR00R2-M00090"
     assert result["broad_query"] == query
     mock_rag_engine.openai_service.get_chat_completion.assert_called_once()
