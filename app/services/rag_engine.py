@@ -631,8 +631,16 @@ class RAGEngine:
                 bg_tasks.add(t1)
                 t1.add_done_callback(bg_tasks.discard)
 
+            links_metadata = ""
+            if ctx.extracted_links:
+                for link in ctx.extracted_links:
+                    if link.get("url"):
+                        links_metadata += f" <!-- link: {link['url']} -->"
+
             t2 = asyncio.create_task(
-                self.chat_memory_service.add_interaction(session_id, question, full_response)
+                self.chat_memory_service.add_interaction(
+                    session_id, question, full_response + links_metadata
+                )
             )
             bg_tasks.add(t2)
             t2.add_done_callback(bg_tasks.discard)

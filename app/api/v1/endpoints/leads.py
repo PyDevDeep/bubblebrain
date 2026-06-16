@@ -1,4 +1,6 @@
+import re
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 import sentry_sdk
@@ -59,20 +61,32 @@ async def process_lead_background(
         try:
             if session_id:
                 chat_memory_service = ChatMemoryService()
-                history = await chat_memory_service.get_history(session_id, limit=4)
+                history = await chat_memory_service.get_history(session_id, limit=10)
                 if history:
-                    # Беремо останні 2 повідомлення (запит юзера і відповідь бота)
-                    context_msgs = history[-2:] if len(history) >= 2 else history
-                    context_lines: list[str] = []
-                    for m in context_msgs:
-                        role_icon = "👤" if m["role"] == "user" else "🤖"
-                        text = m["content"]
-                        if len(text) > 200:
-                            text = text[:200] + "..."
-                        context_lines.append(f"{role_icon}: <i>{text}</i>")
+                    bot_msgs = [m["content"] for m in history if m["role"] == "bot"]
+                    product_url = None
+                    if bot_msgs:
+                        for msg in reversed(bot_msgs):
+                            match = re.search(r"<!-- link:\s*(.*?)\s*-->", msg)
+                            if match:
+                                raw_url = match.group(1)
+                                parsed = urlparse(raw_url)
+                                product_url = urlunparse(
+                                    (
+                                        parsed.scheme,
+                                        parsed.netloc,
+                                        parsed.path,
+                                        parsed.params,
+                                        "",
+                                        parsed.fragment,
+                                    )
+                                )
+                                break
 
-                    context_str = "\n".join(context_lines)
-                    message += f"\n\n💬 <b>Контекст (останні повідомлення):</b>\n{context_str}"
+                    if product_url:
+                        reply_markup["inline_keyboard"].insert(
+                            0, [{"text": "🔗 Товар на сайті", "url": product_url}]
+                        )
 
             await send_telegram_notification(
                 lead_id, message, alert_type, reply_markup=reply_markup, session_id=session_id
