@@ -32,6 +32,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     settings = get_settings()
     setup_logging(settings.log_level)
 
+    # --- ДОДАНО ДЛЯ ФІКСУ КЕШУ ---
+    from app.services.cache_service import CacheService
+
+    cache_service = CacheService(settings)
+    await cache_service.initialize()
+
     if settings.sentry_dsn:
         sentry_sdk.init(
             dsn=settings.sentry_dsn,
