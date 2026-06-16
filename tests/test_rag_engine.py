@@ -91,3 +91,55 @@ async def test_process_query_success(mock_rag_engine):
     assert response.has_context is True
     assert response.answer == "Here is the final answer"
     assert "doc1.txt" in response.sources
+
+
+@pytest.mark.asyncio
+async def test_detect_intent_fast_path_sku(mock_rag_engine):
+    from app.services.rag_engine import INTENT_SEARCH
+
+    # Act
+    result = await mock_rag_engine.detect_intent("123456", "")
+
+    # Assert
+    assert result["intent"] == INTENT_SEARCH
+    assert result["strict_query"] == "123456"
+    assert result["broad_query"] == "123456"
+    # LLM should not be called
+    mock_rag_engine.openai_service.get_chat_completion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_detect_intent_fast_path_part_number(mock_rag_engine):
+    from app.services.rag_engine import INTENT_SEARCH
+
+    # Act
+    result = await mock_rag_engine.detect_intent("RNUC15CRKU700002", "")
+
+    # Assert
+    assert result["intent"] == INTENT_SEARCH
+    assert result["strict_query"] == "RNUC15CRKU700002"
+    assert result["broad_query"] == "RNUC15CRKU700002"
+    mock_rag_engine.openai_service.get_chat_completion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_detect_intent_fallback_override(mock_rag_engine):
+    from app.services.rag_engine import INTENT_GENERAL, INTENT_SEARCH
+
+    # Arrange
+    mock_rag_engine.category_manager.get_categories_string.return_value = "cat1"
+    # LLM incorrectly returns general
+    mock_rag_engine.openai_service.get_chat_completion.return_value = (
+        f'{{"intent": "{INTENT_GENERAL}"}}'
+    )
+
+    # Act
+    query = "Скільки коштує доставка для Barebone ASUS 90AR00R2-M00090"
+    result = await mock_rag_engine.detect_intent(query, "")
+
+    # Assert
+    # Should be overridden to search because of the part number
+    assert result["intent"] == INTENT_SEARCH
+    assert result["strict_query"] == query
+    assert result["broad_query"] == query
+    mock_rag_engine.openai_service.get_chat_completion.assert_called_once()

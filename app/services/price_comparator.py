@@ -24,8 +24,8 @@ class PriceComparator:
         self.cache_service = cache_service
         self.margin_threshold = settings.margin_threshold
 
-    def map_availability(self, dc_status: str) -> str:
-        s = dc_status.lower() if dc_status else ""
+    def map_availability(self, supp_status: str) -> str:
+        s = supp_status.lower() if supp_status else ""
         if "skladom" in s or "ihneď k odberu" in s or "po objednaní" in s:
             return "В наявності (доставка 3-5 днів)"
         elif "na objednávku" in s:
@@ -52,7 +52,7 @@ class PriceComparator:
             return PriceComparisonResult(
                 product_name=product_name,
                 woo_price=None,
-                datacomp_price_uah=None,
+                supplier_price_uah=None,
                 needs_alert=False,
             )
 
@@ -68,7 +68,7 @@ class PriceComparator:
             return PriceComparisonResult(
                 product_name=woo_result.name,
                 woo_price=woo_result.price_uah,
-                datacomp_price_uah=None,
+                supplier_price_uah=None,
                 availability_status="Уточнюється у постачальника",
                 needs_alert=True,
                 alert_reason="scraper_failed_no_sku",
@@ -77,9 +77,9 @@ class PriceComparator:
                 short_description=woo_result.short_description,
             )
 
-        dc_price_uah = None
-        dc_availability_raw = ""
-        dc_url = None
+        supp_price_uah = None
+        supp_availability_raw = ""
+        supp_url = None
 
         cache_entry = await self.cache_service.get(sku)
         # ПРОБИВАЄМО КЕШ, ЯКЩО ЦЕ CHECKOUT
@@ -89,13 +89,13 @@ class PriceComparator:
             and not cache_entry.is_expired(self.cache_service.ttl_days)
         ):
             logger.info("Cache HIT", sku=sku)
-            dc_price_uah = cache_entry.price_uah
-            dc_availability_raw = cache_entry.availability_status
+            supp_price_uah = cache_entry.price_uah
+            supp_availability_raw = cache_entry.availability_status
         else:
             logger.info("Cache MISS or FORCE REFRESH", sku=sku, is_checkout=is_checkout)
-            dc_result = await self.scraper_service.scrape_datacomp(sku)
+            supp_result = await self.scraper_service.scrape_supplier(sku)
 
-            if not dc_result:
+            if not supp_result:
                 base_name = re.sub(r"\([^)]+\)$", "", woo_result.name).strip()
                 words = base_name.split()
                 start_idx = 0
@@ -109,51 +109,51 @@ class PriceComparator:
                     logger.info(
                         "Fallback scraping by cleaned name", sku=sku, cleaned_name=cleaned_name
                     )
-                    dc_result = await self.scraper_service.scrape_datacomp(cleaned_name)
+                    supp_result = await self.scraper_service.scrape_supplier(cleaned_name)
 
-            if dc_result:
-                dc_price_uah = dc_result.price_uah
-                dc_availability_raw = dc_result.availability_status
-                dc_url = dc_result.url
+            if supp_result:
+                supp_price_uah = supp_result.price_uah
+                supp_availability_raw = supp_result.availability_status
+                supp_url = supp_result.url
 
-                if dc_price_uah:
+                if supp_price_uah:
                     new_entry = CacheEntry(
                         sku=sku,
                         product_name=woo_result.name,
-                        price_eur=dc_result.price_eur or 0.0,
-                        price_uah=dc_price_uah,
-                        availability_status=dc_availability_raw,
+                        price_eur=supp_result.price_eur or 0.0,
+                        price_uah=supp_price_uah,
+                        availability_status=supp_availability_raw,
                         delivery_time_description="Авто",
                         updated_at=datetime.now(UTC),
                     )
                     await self.cache_service.set(new_entry)
 
-        mapped_availability = self.map_availability(dc_availability_raw)
+        mapped_availability = self.map_availability(supp_availability_raw)
         diff_woo = None
         needs_alert = False
         alert_reason = None
 
-        if woo_result.price_uah and dc_price_uah:
-            diff_woo = round(woo_result.price_uah - dc_price_uah, 2)
+        if woo_result.price_uah and supp_price_uah:
+            diff_woo = round(woo_result.price_uah - supp_price_uah, 2)
 
             if diff_woo < self.margin_threshold:
                 needs_alert = True
                 alert_reason = "checkout_margin_issue" if is_checkout else "low_margin"
                 await self.cache_service.invalidate(sku)
 
-        elif woo_result.price_uah and not dc_price_uah:
+        elif woo_result.price_uah and not supp_price_uah:
             needs_alert = True
             alert_reason = "scraper_failed"
 
         return PriceComparisonResult(
             product_name=woo_result.name,
             woo_price=woo_result.price_uah,
-            datacomp_price_uah=dc_price_uah,
+            supplier_price_uah=supp_price_uah,
             availability_status=mapped_availability,
             diff_woo_uah=diff_woo,
             needs_alert=needs_alert,
             alert_reason=alert_reason,
-            datacomp_url=dc_url,
+            supplier_url=supp_url,
             woo_url=woo_result.url,
             attributes=woo_result.attributes,
             short_description=woo_result.short_description,

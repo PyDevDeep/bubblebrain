@@ -65,7 +65,7 @@ async def test_product_checkout_intent_alert(
     mock_result.alert_reason = "low_margin"
     mock_result.product_name = "Test Product"
     mock_result.woo_price = 100
-    mock_result.datacomp_price_uah = 50
+    mock_result.supplier_price_uah = 50
     mock_result.diff_woo_uah = 50
     mock_price_comparator.compare.return_value = mock_result
 

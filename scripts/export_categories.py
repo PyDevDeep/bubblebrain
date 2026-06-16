@@ -51,7 +51,7 @@ def _write_csv_sync(categories: list[dict[str, Any]]) -> None:
 
 async def export_categories_to_csv() -> None:
     settings = get_settings()
-    base_url = "https://digitaldreams.com.ua/wp-json/wc/v3/products/categories"
+    base_url = f"{settings.woo_url.rstrip('/')}/wp-json/wc/v3/products/categories"
 
     categories: list[dict[str, Any]] = []
     page = 1

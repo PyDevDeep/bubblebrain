@@ -15,7 +15,7 @@ class WooService:
     def __init__(self, settings: Settings) -> None:
         self.woo_ck = settings.woo_ck
         self.woo_cs = settings.woo_cs
-        self.base_url = "https://digitaldreams.com.ua/wp-json/wc/v3/products"
+        self.base_url = f"{settings.woo_url.rstrip('/')}/wp-json/wc/v3/products"
         # Збільшено таймаут через повільний пошук WooCommerce
         self.timeout = httpx.Timeout(15.0, connect=3.0)
 

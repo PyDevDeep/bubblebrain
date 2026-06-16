@@ -89,6 +89,40 @@ class RAGEngine:
             Dictionary containing 'intent', 'product_name', 'strict_query',
             'broad_query', 'category_query', and 'normalized_faq_queries'.
         """
+        stripped_q = question.strip()
+
+        # Regex checks for product codes
+        has_sku = bool(re.search(r"\b\d{6}\b", stripped_q))
+        has_part_number = bool(
+            re.search(
+                r"\b(?=[a-zA-Z0-9\-\.]*[a-zA-Z])(?=[a-zA-Z0-9\-\.]*\d)[a-zA-Z0-9\-\.]{5,25}\b",
+                stripped_q,
+            )
+        )
+
+        faq_triggers = [
+            "доставка",
+            "оплата",
+            "гаранті",
+            "купити",
+            "замовити",
+            "наявн",
+            "скільки",
+            "як ",
+        ]
+        needs_llm = any(trigger in stripped_q.lower() for trigger in faq_triggers)
+
+        # Fast-path for pure part numbers/SKUs
+        if (has_sku or has_part_number) and not needs_llm and len(stripped_q) < 100:
+            return {
+                "intent": INTENT_SEARCH,
+                "product_name": None,
+                "strict_query": stripped_q,
+                "broad_query": stripped_q,
+                "category_query": None,
+                "normalized_faq_queries": [],
+            }
+
         categories_str = await self.category_manager.get_categories_string()
 
         prompt = INTENT_ANALYZER_PROMPT.format(
@@ -112,6 +146,13 @@ class RAGEngine:
             )
             cleaned = response.replace("```json", "").replace("```", "").strip()
             parsed_json = json.loads(cleaned)
+
+            # Fallback override
+            if (has_sku or has_part_number) and parsed_json.get("intent") == INTENT_GENERAL:
+                parsed_json["intent"] = INTENT_SEARCH
+                parsed_json["strict_query"] = stripped_q
+                parsed_json["broad_query"] = stripped_q
+
             return cast(dict[str, Any], parsed_json)
         except json.JSONDecodeError:
             logger.exception("Intent detection JSON parsing failed")

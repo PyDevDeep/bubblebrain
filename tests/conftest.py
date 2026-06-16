@@ -58,5 +58,7 @@ def mock_settings(tmp_path):
     # Woo
     settings.woo_ck = "ck"
     settings.woo_cs = "cs"
+    settings.woo_url = "https://mock-woo.com"
+    settings.supplier_url = "https://mock-supplier.com"
 
     return settings

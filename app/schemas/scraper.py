@@ -11,7 +11,7 @@ class WooProduct(BaseModel):
     short_description: str | None = None
 
 
-class DatacompProduct(BaseModel):
+class SupplierProduct(BaseModel):
     name: str
     price_eur: float | None
     price_uah: float | None
@@ -28,13 +28,13 @@ class HotlineProduct(BaseModel):
 class PriceComparisonResult(BaseModel):
     product_name: str
     woo_price: float | None
-    datacomp_price_uah: float | None
+    supplier_price_uah: float | None
     hotline_price_uah: float | None = None
     availability_status: str | None = None
     diff_woo_uah: float | None = None
     needs_alert: bool = False
     alert_reason: str | None = None
-    datacomp_url: str | None = None
+    supplier_url: str | None = None
     hotline_url: str | None = None
     woo_url: str | None = None
     attributes: dict[str, str] = {}

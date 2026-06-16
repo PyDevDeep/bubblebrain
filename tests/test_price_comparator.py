@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.schemas.scraper import DatacompProduct
+from app.schemas.scraper import SupplierProduct
 from app.services.price_comparator import PriceComparator
 
 
@@ -81,10 +81,10 @@ async def test_compare_woo_not_found(
 
     assert result.product_name == "Unknown Product"
     assert result.woo_price is None
-    assert result.datacomp_price_uah is None
+    assert result.supplier_price_uah is None
     assert result.needs_alert is False
 
-    scraper_service_mock.scrape_datacomp.assert_not_called()
+    scraper_service_mock.scrape_supplier.assert_not_called()
     cache_service_mock.get.assert_not_called()
 
 
@@ -111,7 +111,7 @@ async def test_compare_woo_found_no_sku(
     assert result.alert_reason == "scraper_failed_no_sku"
     assert result.availability_status == "Уточнюється у постачальника"
 
-    scraper_service_mock.scrape_datacomp.assert_not_called()
+    scraper_service_mock.scrape_supplier.assert_not_called()
     cache_service_mock.get.assert_not_called()
 
 
@@ -140,8 +140,8 @@ async def test_compare_cache_hit(
 
     result = await price_comparator.compare("Test Product", is_checkout=False)
 
-    scraper_service_mock.scrape_datacomp.assert_not_called()
-    assert result.datacomp_price_uah == 700.0
+    scraper_service_mock.scrape_supplier.assert_not_called()
+    assert result.supplier_price_uah == 700.0
     assert result.availability_status == "В наявності (доставка 3-5 днів)"
     assert result.needs_alert is False  # 1000 - 700 = 300 > 200 (threshold)
 
@@ -167,20 +167,20 @@ async def test_compare_checkout_forces_scrape(
     cache_entry.is_expired.return_value = False
     cache_service_mock.get.return_value = cache_entry
 
-    scrape_result = DatacompProduct(
-        name="Datacomp Product",
+    scrape_result = SupplierProduct(
+        name="Supplier Product",
         price_eur=20.0,
         price_uah=750.0,
         availability_status="na objednávku",
-        url="http://datacomp",
+        url="http://supplier",
     )
-    scraper_service_mock.scrape_datacomp.return_value = scrape_result
+    scraper_service_mock.scrape_supplier.return_value = scrape_result
 
     result = await price_comparator.compare("Test Product", is_checkout=True)
 
-    scraper_service_mock.scrape_datacomp.assert_called_once_with("123")
+    scraper_service_mock.scrape_supplier.assert_called_once_with("123")
     cache_service_mock.set.assert_called_once()
-    assert result.datacomp_price_uah == 750.0
+    assert result.supplier_price_uah == 750.0
     assert result.availability_status == "Під замовлення (14-21 днів)"
     assert result.needs_alert is False  # 1000 - 750 = 250 > 200
 
@@ -203,14 +203,14 @@ async def test_compare_margin_ok(
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_service_mock.get.return_value = None
-    scrape_result = DatacompProduct(
+    scrape_result = SupplierProduct(
         name="P",
         price_eur=20.0,
         price_uah=750.0,
         availability_status="skladom",
         url="",
     )
-    scraper_service_mock.scrape_datacomp.return_value = scrape_result
+    scraper_service_mock.scrape_supplier.return_value = scrape_result
 
     result = await price_comparator.compare("Test Product")
 
@@ -237,14 +237,14 @@ async def test_compare_low_margin(
 
     cache_service_mock.get.return_value = None
     # 1000 - 900 = 100 < 200
-    scrape_result = DatacompProduct(
+    scrape_result = SupplierProduct(
         name="P",
         price_eur=20.0,
         price_uah=900.0,
         availability_status="skladom",
         url="",
     )
-    scraper_service_mock.scrape_datacomp.return_value = scrape_result
+    scraper_service_mock.scrape_supplier.return_value = scrape_result
 
     result = await price_comparator.compare("Test Product", is_checkout=False)
 
@@ -271,14 +271,14 @@ async def test_compare_checkout_margin_issue(
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_service_mock.get.return_value = None
-    scrape_result = DatacompProduct(
+    scrape_result = SupplierProduct(
         name="P",
         price_eur=20.0,
         price_uah=900.0,
         availability_status="skladom",
         url="",
     )
-    scraper_service_mock.scrape_datacomp.return_value = scrape_result
+    scraper_service_mock.scrape_supplier.return_value = scrape_result
 
     result = await price_comparator.compare("Test Product", is_checkout=True)
 
@@ -305,10 +305,10 @@ async def test_compare_scraper_failed(
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_service_mock.get.return_value = None
-    scraper_service_mock.scrape_datacomp.return_value = None
+    scraper_service_mock.scrape_supplier.return_value = None
 
     result = await price_comparator.compare("Test Product")
 
-    assert result.datacomp_price_uah is None
+    assert result.supplier_price_uah is None
     assert result.needs_alert is True
     assert result.alert_reason == "scraper_failed"

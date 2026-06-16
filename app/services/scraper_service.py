@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 
 from app.core.config import Settings
 from app.core.logging_config import get_logger
-from app.schemas.scraper import DatacompProduct, HotlineProduct
+from app.schemas.scraper import HotlineProduct, SupplierProduct
 
 logger = get_logger(__name__)
 
@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 class ScraperService:
     def __init__(self, settings: Settings) -> None:
         self.euro_rate = settings.euro_rate
+        self.supplier_url = settings.supplier_url
         self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
         self.headers = {
             "User-Agent": self.user_agent,
@@ -38,10 +39,9 @@ class ScraperService:
                 logger.error("Scraper fetch error", error=str(e), url=url)
                 return None
 
-    async def scrape_datacomp(self, search_term: str) -> DatacompProduct | None:
-        url = "https://datacomp.sk/default.asp?cls=stoitems&fulltext=" + urllib.parse.quote(
-            search_term
-        )
+    async def scrape_supplier(self, search_term: str) -> SupplierProduct | None:
+        base_url = self.supplier_url.rstrip("/")
+        url = f"{base_url}/default.asp?cls=stoitems&fulltext=" + urllib.parse.quote(search_term)
         resp = await self._fetch_html(url)
         if not resp:
             return None
@@ -55,9 +55,7 @@ class ScraperService:
             name = name_node.get_text(strip=True)
             href_attr = name_node.get("href")
             href_str = str(href_attr) if href_attr is not None else ""
-            link = (
-                "https://datacomp.sk/" + href_str if name_node.has_attr("href") else str(resp.url)
-            )
+            link = f"{base_url}/" + href_str if name_node.has_attr("href") else str(resp.url)
 
             price_node = soup.find("div", class_="wvat")
             price = None
@@ -80,11 +78,11 @@ class ScraperService:
             stock = " | ".join(availability) if availability else "Невідомо"
             price_uah = round(price * self.euro_rate, 2) if price else None
 
-            return DatacompProduct(
+            return SupplierProduct(
                 name=name, price_eur=price, price_uah=price_uah, availability_status=stock, url=link
             )
         except Exception as e:
-            logger.error("Error parsing Datacomp HTML", error=str(e), search_term=search_term)
+            logger.error("Error parsing Supplier HTML", error=str(e), search_term=search_term)
             return None
 
     async def scrape_hotline(self, search_term: str) -> HotlineProduct | None:
@@ -133,12 +131,11 @@ class ScraperService:
             logger.error("Error parsing Hotline HTML", error=str(e), search_term=search_term)
             return None
 
-    async def scrape_datacomp_multi(
+    async def scrape_supplier_multi(
         self, search_term: str, limit: int = 5
-    ) -> list[DatacompProduct]:
-        url = "https://datacomp.sk/default.asp?cls=stoitems&fulltext=" + urllib.parse.quote(
-            search_term
-        )
+    ) -> list[SupplierProduct]:
+        base_url = self.supplier_url.rstrip("/")
+        url = f"{base_url}/default.asp?cls=stoitems&fulltext=" + urllib.parse.quote(search_term)
         resp = await self._fetch_html(url)
         if not resp:
             return []
@@ -149,16 +146,12 @@ class ScraperService:
             if not name_nodes:
                 return []
 
-            products: list[DatacompProduct] = []
+            products: list[SupplierProduct] = []
             for name_node in name_nodes[:limit]:
                 name = name_node.get_text(strip=True)
                 href_attr = name_node.get("href")
                 href_str = str(href_attr) if href_attr is not None else ""
-                link = (
-                    "https://datacomp.sk/" + href_str
-                    if name_node.has_attr("href")
-                    else str(resp.url)
-                )
+                link = f"{base_url}/" + href_str if name_node.has_attr("href") else str(resp.url)
 
                 parent = name_node
                 price_node = None
@@ -193,7 +186,7 @@ class ScraperService:
                 price_uah = round(price * self.euro_rate, 2) if price else None
 
                 products.append(
-                    DatacompProduct(
+                    SupplierProduct(
                         name=name,
                         price_eur=price,
                         price_uah=price_uah,
@@ -204,5 +197,5 @@ class ScraperService:
 
             return products
         except Exception as e:
-            logger.error("Error parsing Datacomp Multi HTML", error=str(e), search_term=search_term)
+            logger.error("Error parsing Supplier Multi HTML", error=str(e), search_term=search_term)
             return []

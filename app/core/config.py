@@ -27,6 +27,8 @@ class Settings(BaseSettings):
 
     woo_ck: str = ""
     woo_cs: str = ""
+    woo_url: str = ""
+    supplier_url: str = ""
     euro_rate: float = 52.0  # Зможемо оновлювати динамічно пізніше
     margin_threshold: float = 200.0
 

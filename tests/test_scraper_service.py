@@ -8,7 +8,7 @@ from app.services.scraper_service import ScraperService
 
 @pytest.mark.asyncio
 @patch("app.services.scraper_service.httpx.AsyncClient")
-async def test_scrape_datacomp_success(mock_client_class, mock_settings):
+async def test_scrape_supplier_success(mock_client_class, mock_settings):
     # Arrange
     html_content = """
     <html>
@@ -25,13 +25,13 @@ async def test_scrape_datacomp_success(mock_client_class, mock_settings):
     mock_response = Mock()
     mock_response.status_code = 200
     mock_response.text = html_content
-    mock_response.url = "https://datacomp.sk/"
+    mock_response.url = "https://supplier.sk/"
     mock_client.get.return_value = mock_response
 
     service = ScraperService(mock_settings)
 
     # Act
-    res = await service.scrape_datacomp("Test")
+    res = await service.scrape_supplier("Test")
 
     # Assert
     assert res is not None
@@ -40,12 +40,12 @@ async def test_scrape_datacomp_success(mock_client_class, mock_settings):
     assert res.price_uah == 420.0
     assert "In Stock" in res.availability_status
     assert "Online" in res.availability_status
-    assert res.url == "https://datacomp.sk//product1"
+    assert res.url == "https://mock-supplier.com//product1"
 
 
 @pytest.mark.asyncio
 @patch("app.services.scraper_service.httpx.AsyncClient")
-async def test_scrape_datacomp_not_found(mock_client_class, mock_settings):
+async def test_scrape_supplier_not_found(mock_client_class, mock_settings):
     mock_client = AsyncMock()
     mock_client_class.return_value.__aenter__.return_value = mock_client
     mock_response = Mock()
@@ -53,19 +53,19 @@ async def test_scrape_datacomp_not_found(mock_client_class, mock_settings):
     mock_client.get.return_value = mock_response
 
     service = ScraperService(mock_settings)
-    res = await service.scrape_datacomp("Test")
+    res = await service.scrape_supplier("Test")
     assert res is None
 
 
 @pytest.mark.asyncio
 @patch("app.services.scraper_service.httpx.AsyncClient")
-async def test_scrape_datacomp_timeout(mock_client_class, mock_settings):
+async def test_scrape_supplier_timeout(mock_client_class, mock_settings):
     mock_client = AsyncMock()
     mock_client_class.return_value.__aenter__.return_value = mock_client
     mock_client.get.side_effect = httpx.TimeoutException("Timeout")
 
     service = ScraperService(mock_settings)
-    res = await service.scrape_datacomp("Test")
+    res = await service.scrape_supplier("Test")
     assert res is None
 
 
@@ -133,7 +133,7 @@ async def test_scrape_hotline_fallback_regex(mock_client_class, mock_settings):
 
 @pytest.mark.asyncio
 @patch("app.services.scraper_service.httpx.AsyncClient")
-async def test_scrape_datacomp_multi(mock_client_class, mock_settings):
+async def test_scrape_supplier_multi(mock_client_class, mock_settings):
     html_content = """
     <html>
         <body>
@@ -153,12 +153,12 @@ async def test_scrape_datacomp_multi(mock_client_class, mock_settings):
     mock_response = Mock()
     mock_response.status_code = 200
     mock_response.text = html_content
-    mock_response.url = "https://datacomp.sk/"
+    mock_response.url = "https://supplier.sk/"
     mock_client.get.return_value = mock_response
 
     service = ScraperService(mock_settings)
 
-    res = await service.scrape_datacomp_multi("Test", limit=2)
+    res = await service.scrape_supplier_multi("Test", limit=2)
     assert len(res) == 2
     assert res[0].name == "Product 1"
     assert res[1].name == "Product 2"

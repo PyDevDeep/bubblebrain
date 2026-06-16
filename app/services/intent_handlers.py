@@ -89,7 +89,7 @@ class ProductCheckoutIntentHandler:
                 msg = ALERT_MARGIN_ISSUE.format(
                     safe_product_name=safe_product_name,
                     woo_price=result.woo_price,
-                    datacomp_price=result.datacomp_price_uah,
+                    supplier_price=result.supplier_price_uah,
                     diff_woo=result.diff_woo_uah,
                 )
                 alert_success = await self.telegram_service.send_alert(msg, alert_type="price")
