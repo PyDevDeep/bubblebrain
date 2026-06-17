@@ -34,7 +34,14 @@ TELEGRAM_LEAD_TEMPLATE = (
 )
 DEFAULT_LEAD_CONTEXT = "Запит з чату"
 DEFAULT_MISSING_VALUE = "Не вказано"
-ALERT_MARGIN_ISSUE = "🚨 <b>Аномалія ціни / Зміна маржі!</b>\n📦 Товар: {safe_product_name}\n🌐 Наша ціна: {woo_price} грн\n📦 Постачальник: {supplier_price} грн\n📉 Маржа: {diff_woo} грн"
+ALERT_MARGIN_ISSUE = (
+    "🚨 <b>Невідповідність маржі!</b>\n"
+    "📦 Товар: {safe_product_name}\n"
+    "🌐 Наша ціна: {woo_price} грн\n"
+    "📦 Постачальник: {supplier_price} грн\n"
+    "📉 Маржа: {diff_woo} грн (має бути рівно {margin_threshold} грн)\n"
+    "⚠️ Маржа вийшла за межі жорсткого коридору."
+)
 ALERT_SCRAPER_FAILED = (
     "⚠️ <b>Помилка Скрапера!</b>\n📦 Товар: {safe_product_name}\nНе вдалося отримати ціну."
 )

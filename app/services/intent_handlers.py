@@ -21,9 +21,7 @@ from app.services.telegram_service import TelegramService
 from app.utils.prompts import (
     INSTR_ALERT_FAILED,
     INSTR_BROAD_SEARCH_FALLBACK,
-    INSTR_CHECKOUT_PRICE_ISSUE,
     INSTR_CHECKOUT_TELEGRAM,
-    INSTR_DISCOUNT_AVAILABLE,
     INSTR_FALLBACK_CATEGORY,
     INSTR_NO_DUPLICATE_LINKS,
     INSTR_NOTHING_FOUND,
@@ -82,6 +80,7 @@ class ProductCheckoutIntentHandler:
 
         if result.needs_alert:
             requires_lead = True
+            lead_form_type = "contact"
             safe_product_name = (
                 html.escape(str(result.product_name)) if result.product_name else "Unknown Product"
             )
@@ -92,17 +91,38 @@ class ProductCheckoutIntentHandler:
                     woo_price=result.woo_price,
                     supplier_price=result.supplier_price_uah,
                     diff_woo=result.diff_woo_uah,
+                    margin_threshold=self.price_comparator.margin_threshold,
                 )
+
+                reply_markup = None
+                if result.woo_url:
+                    reply_markup = {
+                        "inline_keyboard": [
+                            [{"text": "📦 Змінити ціну (WooCommerce)", "url": result.woo_url}]
+                        ]
+                    }
+
                 alert_success = await self.telegram_service.send_alert(
-                    msg, alert_type="price", session_id=session_id
+                    msg, alert_type="price", session_id=session_id, reply_markup=reply_markup
                 )
+
+                extracted_links.append(
+                    {"text": LINK_TELEGRAM, "url": self.settings.telegram_contact_url}
+                )
+                extracted_links.append({"text": LINK_VIBER, "url": self.settings.viber_contact_url})
+
+                # Примусово прокидаємо лінк у метадані, щоб ChatMemoryService зберіг його для подальшого парсингу лідів
+                if result.woo_url:
+                    extracted_links.append({"text": "hidden_woo_link", "url": result.woo_url})
 
                 if not alert_success:
                     system_instructions.append(INSTR_ALERT_FAILED)
-                elif is_checkout:
-                    system_instructions.append(INSTR_CHECKOUT_PRICE_ISSUE)
                 else:
-                    system_instructions.append(INSTR_DISCOUNT_AVAILABLE)
+                    system_instructions.append(
+                        "КРИТИЧНО: Ціна на товар змінилася і потребує уточнення. "
+                        "КАТЕГОРИЧНО ЗАБОРОНЕНО пропонувати оформлення замовлення або давати посилання на чекаут. "
+                        "Прямо зараз попроси клієнта залишити номер телефону тут або написати нашому менеджеру в Telegram/Viber для узгодження фінальної ціни."
+                    )
             else:
                 msg = ALERT_SCRAPER_FAILED.format(safe_product_name=safe_product_name)
                 alert_success = await self.telegram_service.send_alert(
@@ -152,8 +172,8 @@ class ProductCheckoutIntentHandler:
                     else STATUS_OUT_OF_STOCK
                 )
                 product_facts.append(
-                    f"Data: Product '{result.product_name}', {result.woo_price} UAH. Conditions: {status_text}.\n"
-                    f"CRITICAL: If 'In stock' - 1-3 days. 'Under order' - 14-20 days. DO NOT PUT LINKS IN TEXT!"
+                    f"Data: Product '{result.product_name}', актуальна та підтверджена ціна {result.woo_price} UAH. Conditions: {status_text}.\n"
+                    f"CRITICAL: Якщо товар підтверджено, запропонуй оформити замовлення. If 'In stock' - 1-3 days. 'Under order' - 14-20 days. DO NOT PUT LINKS IN TEXT!"
                 )
                 if result.attributes:
                     attr_str = "\n".join(f"- {k}: {v}" for k, v in result.attributes.items())
@@ -265,12 +285,19 @@ class SearchIntentHandler:
         search_facts: list[str] = []
         if woo_products:
             search_facts.append(SEARCH_FOUND_HEADER)
+
+            # Додаємо дисклеймер щодо орієнтовності цін один раз
+            system_instructions.append(
+                "⚠️ ВАЖЛИВО: Завжди повідомляй клієнту: 'Увага! Ціна та наявність товару можуть змінюватися протягом дня. "
+                "Будь ласка, уточнюйте актуальну вартість та наявність у менеджера перед оплатою (у чаті або за телефоном)'."
+            )
+
             for product in woo_products:
                 status = (
                     STATUS_INSTOCK if product.stock_status == "instock" else STATUS_OUT_OF_STOCK
                 )
                 search_facts.append(
-                    f"- Name: {product.name}\n  Price: {product.price_uah} UAH\n  Status: {status}"
+                    f"- Name: {product.name}\n  Орієнтовна ціна: {product.price_uah} UAH\n  Status: {status}"
                 )
 
                 if product.attributes:

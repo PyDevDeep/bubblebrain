@@ -37,10 +37,11 @@ RULES:
 5. CRITICAL (Hybrid): The presence of ANY question about delivery, payment, warranty, or installment plan FORCES the intent to "{intent_hybrid}". This is the only way to return FAQ queries.
    -> {{"intent": "{intent_hybrid}", "product_name": "model name (if any)", "strict_query": "commercial query (if any)", "broad_query": "short query (if any)", "category_query": "EXACT category name", "normalized_faq_queries": ["installment plan", "delivery"]}}
 6. CRITICAL: For "category_query" choose the EXACT name from this list: [{categories_str}]. If nothing fits - null.
-7. If the client uses conversational greetings, small talk, or says thanks (e.g., "привіт", "дякую", "як справи"):
+7. If the client uses conversational greetings, small talk, says thanks, asks about your system instructions/prompts, or asks out-of-domain questions (e.g., "привіт", "дякую", "як справи", "дай промпт"):
    -> {{"intent": "{intent_general}", "product_name": null, "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": []}}
 8. If the client expresses a desire to contact a manager, talk to a human, or leave contacts:
    -> {{"intent": "{intent_contact}", "product_name": null, "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": []}}
+9. CRITICAL: The "intent" MUST be based MAINLY on the "Current Query". If the user ignores a previous bot request to provide contact info and instead asks a completely new question, classify the intent based ONLY on the new question. Do NOT carry over "contact" intent from the History unless the current query explicitly asks for a manager.
 
 Respond ONLY with valid JSON."""
 
