@@ -294,6 +294,28 @@ class RAGEngine:
         if phone_match:
             phone_number = phone_match.group(0)
             logger.info("Direct lead captured", session_id=session_id)
+
+            # --- Аналіз історії для класифікації ліда та пошуку товару ---
+            history = await self.chat_memory_service.get_history(session_id, limit=6)
+            product_url = None
+            is_price_clarification = False
+
+            if history:
+                bot_msgs = [m.get("content", "") for m in history if m.get("role") == "bot"]
+                for msg in reversed(bot_msgs):
+                    # Відновлено пропущену логіку регулярного виразу
+                    match = re.search(r"(https?://\S+)", msg)
+                    if match:
+                        product_url = str(match.group(1)).strip()
+                    break
+
+                # Шукаємо маркери проблемної маржі (з інструкцій, які ми додали в intent_handlers)
+                full_history_text = " ".join(bot_msgs).lower()
+                if "уточнення" in full_history_text or "фінальної ціни" in full_history_text:
+                    is_price_clarification = True
+
+            lead_type = "price_clarification" if is_price_clarification else "contact"
+
             try:
                 from app.core.db import AsyncSessionLocal, commit_with_retry
                 from app.models.lead import Lead
@@ -303,7 +325,7 @@ class RAGEngine:
                         name="Клієнт з чату",
                         phone_number=phone_number,
                         contact_method="chat",
-                        lead_type="contact",
+                        lead_type=lead_type,
                         session_id=session_id,
                         status="new",
                         notification_status="pending",
@@ -313,21 +335,32 @@ class RAGEngine:
                     await session.refresh(db_lead)
                     lead_id = int(db_lead.id)  # type: ignore
 
+                # Динамічний заголовок і теги
+                header = (
+                    "⚠️ <b>УТОЧНЕННЯ ЦІНИ (ЛІД)</b>"
+                    if is_price_clarification
+                    else "🔥 <b>НОВИЙ ЛІД З БОТА</b>"
+                )
+                hashtag = "#PRICE_LEAD" if is_price_clarification else "#BOT_LEAD"
+
                 message = (
-                    f"🔥 <b>НОВИЙ ЛІД З БОТА [ID: {lead_id}]</b>\n\n"
+                    f"{header} <b>[ID: {lead_id}]</b>\n\n"
                     f"👤 <b>Ім'я:</b> Клієнт з чату\n"
                     f"📞 <b>Контакт:</b> <code>{phone_number}</code>\n"
                     f"📱 <b>Спосіб:</b> chat\n"
-                    f"💬 <b>Контекст:</b> User query: '{question}'. Session: {session_id}\n\n"
-                    f"#БОТ_ЛІД #ID{lead_id}"
+                    f"💬 <b>Запит:</b> '{question}'\n\n"
+                    f"{hashtag} #ID{lead_id}"
                 )
-                reply_markup = {
-                    "inline_keyboard": [
+
+                # Безпечне формування кнопок: уникаємо AttributeError та помилок типізації
+                inline_keyboard: list[list[dict[str, Any]]] = []
+                if product_url:
+                    inline_keyboard.append([{"text": "🔗 Товар на сайті", "url": product_url}])
+
+                inline_keyboard.extend(
+                    [
                         [
-                            {
-                                "text": "✅ Успіх (Продано)",
-                                "callback_data": f"lead_status:{lead_id}:success",
-                            },
+                            {"text": "✅ Успіх", "callback_data": f"lead_status:{lead_id}:success"},
                             {
                                 "text": "❌ Відмова",
                                 "callback_data": f"lead_status:{lead_id}:decline",
@@ -340,8 +373,11 @@ class RAGEngine:
                             }
                         ],
                     ]
-                }
+                )
 
+                reply_markup = {"inline_keyboard": inline_keyboard}
+
+                # session_id гарантує, що telegram_service прикріпить TXT-файл історії
                 lead_success = await self.telegram_service.send_alert(
                     message, alert_type="lead", session_id=session_id, reply_markup=reply_markup
                 )
