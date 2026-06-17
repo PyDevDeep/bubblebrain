@@ -20,8 +20,9 @@ class ChatWidget {
     this._typingIndicator = null;
 
     // Збереження сесії в sessionStorage
-    this._sessionId = sessionStorage.getItem('bb_session') || this._generateSessionId();
-    sessionStorage.setItem('bb_session', this._sessionId);
+    this._sessionId =
+      sessionStorage.getItem("bb_session") || this._generateSessionId();
+    sessionStorage.setItem("bb_session", this._sessionId);
 
     this._initDOM();
   }
@@ -32,7 +33,7 @@ class ChatWidget {
     }
     const array = new Uint32Array(4);
     crypto.getRandomValues(array);
-    return Array.from(array, dec => dec.toString(36)).join('');
+    return Array.from(array, (dec) => dec.toString(36)).join("");
   }
   async _initDOM() {
     const host = document.createElement("div");
@@ -129,7 +130,9 @@ class ChatWidget {
         this.toggleWindow();
       }
     });
-    this._elements.closeBtn.addEventListener("click", () => this.toggleWindow());
+    this._elements.closeBtn.addEventListener("click", () =>
+      this.toggleWindow(),
+    );
     this._elements.sendBtn.addEventListener("click", () => this._handleSend());
     this._elements.input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -347,20 +350,25 @@ class ChatWidget {
 
   // МЕТОД ДЛЯ РЕНДЕРУ КНОПОК - ДОДАТИ ПІСЛЯ _sendMessageStream
   _renderInteractiveElements(container, links, requiresLead, leadFormType) {
-    if (links.length > 0) {
+    // Відфільтровуємо системні лінки, щоб вони не рендерилися для клієнта
+    const visibleLinks = links.filter(
+      (link) => link.text !== "hidden_woo_link",
+    );
+
+    if (visibleLinks.length > 0) {
       const linksContainer = document.createElement("div");
       linksContainer.className = "interactive-links";
-      links.forEach((link) => {
+      visibleLinks.forEach((link) => {
         const btn = document.createElement("a");
         try {
           const parsedUrl = new URL(link.url);
-          if (['http:', 'https:'].includes(parsedUrl.protocol)) {
+          if (["http:", "https:"].includes(parsedUrl.protocol)) {
             btn.href = link.url;
           } else {
-            btn.href = '#';
+            btn.href = "#";
           }
         } catch (e) {
-          btn.href = '#';
+          btn.href = "#";
         }
         btn.target = "_blank";
         btn.className = "bb-link-btn";
@@ -419,7 +427,9 @@ class ChatWidget {
         `;
       }
 
-      leadContainer.innerHTML = formHtml + `
+      leadContainer.innerHTML =
+        formHtml +
+        `
         <div class="form-message" style="margin-top: 8px; font-weight: bold; display: none; font-size: 13px;"></div>
       `;
       container.appendChild(leadContainer);
@@ -442,16 +452,20 @@ class ChatWidget {
           }
           data.session_id = this._sessionId;
 
-          const apiHost = this._config.apiHost || "http://localhost:8000/api/v1";
+          const apiHost =
+            this._config.apiHost || "http://localhost:8000/api/v1";
           const response = await fetch(`${apiHost}/leads`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data),
           });
 
-          if (response.status === 413) throw new Error("Обсяг даних занадто великий");
-          if (response.status === 429) throw new Error("Забагато запитів. Зачекайте.");
-          if (response.status === 422) throw new Error("Некоректно заповнені поля форми.");
+          if (response.status === 413)
+            throw new Error("Обсяг даних занадто великий");
+          if (response.status === 429)
+            throw new Error("Забагато запитів. Зачекайте.");
+          if (response.status === 422)
+            throw new Error("Некоректно заповнені поля форми.");
           if (!response.ok) throw new Error("Помилка на сервері.");
 
           msgDiv.textContent = "Ваші дані успішно відправлено!";
@@ -459,9 +473,10 @@ class ChatWidget {
           msgDiv.style.display = "block";
           form.style.display = "none";
         } catch (error) {
-          msgDiv.textContent = error.message === "Failed to fetch"
-            ? "Помилка мережі. Перевірте з'єднання."
-            : (error.message || "Сталася помилка.");
+          msgDiv.textContent =
+            error.message === "Failed to fetch"
+              ? "Помилка мережі. Перевірте з'єднання."
+              : error.message || "Сталася помилка.";
           msgDiv.style.color = "red";
           msgDiv.style.display = "block";
           btn.disabled = false;
