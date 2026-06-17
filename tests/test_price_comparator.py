@@ -134,16 +134,16 @@ async def test_compare_cache_hit(
 
     cache_entry = MagicMock()
     cache_entry.is_expired.return_value = False
-    cache_entry.price_uah = 700.0
+    cache_entry.price_uah = 800.0
     cache_entry.availability_status = "skladom"
     cache_service_mock.get.return_value = cache_entry
 
     result = await price_comparator.compare("Test Product", is_checkout=False)
 
     scraper_service_mock.scrape_supplier.assert_not_called()
-    assert result.supplier_price_uah == 700.0
+    assert result.supplier_price_uah == 800.0
     assert result.availability_status == "В наявності (доставка 3-5 днів)"
-    assert result.needs_alert is False  # 1000 - 700 = 300 > 200 (threshold)
+    assert result.needs_alert is False  # 1000 - 800 = 200 == threshold
 
 
 @pytest.mark.asyncio
@@ -170,7 +170,7 @@ async def test_compare_checkout_forces_scrape(
     scrape_result = SupplierProduct(
         name="Supplier Product",
         price_eur=20.0,
-        price_uah=750.0,
+        price_uah=800.0,
         availability_status="na objednávku",
         url="http://supplier",
     )
@@ -180,9 +180,9 @@ async def test_compare_checkout_forces_scrape(
 
     scraper_service_mock.scrape_supplier.assert_called_once_with("123")
     cache_service_mock.set.assert_called_once()
-    assert result.supplier_price_uah == 750.0
+    assert result.supplier_price_uah == 800.0
     assert result.availability_status == "Під замовлення (14-21 днів)"
-    assert result.needs_alert is False  # 1000 - 750 = 250 > 200
+    assert result.needs_alert is False  # 1000 - 800 = 200 == threshold
 
 
 @pytest.mark.asyncio
@@ -206,7 +206,7 @@ async def test_compare_margin_ok(
     scrape_result = SupplierProduct(
         name="P",
         price_eur=20.0,
-        price_uah=750.0,
+        price_uah=800.0,
         availability_status="skladom",
         url="",
     )
