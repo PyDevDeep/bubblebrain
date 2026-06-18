@@ -7,6 +7,12 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from app.core.config import Settings
 from app.core.logging_config import get_logger
+from app.core.metrics import (
+    llm_cost_usd_total,
+    llm_latency_seconds,
+    llm_requests_total,
+    llm_tokens_total,
+)
 
 logger = get_logger(__name__)
 
@@ -109,22 +115,40 @@ class OpenAIService:
             kwargs["response_format"] = response_format
 
         try:
-            response = cast(
-                ChatCompletion,
-                await self.client.chat.completions.create(
-                    model=self.openai_model,
-                    messages=messages,  # type: ignore
-                    max_tokens=self.max_tokens_response,
-                    temperature=0.7,
-                    **kwargs,  # type: ignore
-                ),
-            )
+            with llm_latency_seconds.labels(model=self.openai_model).time():
+                response = cast(
+                    ChatCompletion,
+                    await self.client.chat.completions.create(
+                        model=self.openai_model,
+                        messages=messages,  # type: ignore
+                        max_tokens=self.max_tokens_response,
+                        temperature=0.7,
+                        **kwargs,  # type: ignore
+                    ),
+                )
+
+            llm_requests_total.labels(model=self.openai_model, status="success").inc()
+
+            if response.usage:
+                p_tokens = response.usage.prompt_tokens
+                c_tokens = response.usage.completion_tokens
+                llm_tokens_total.labels(model=self.openai_model, token_type="prompt").inc(p_tokens)  # noqa: S106
+                llm_tokens_total.labels(model=self.openai_model, token_type="completion").inc(  # noqa: S106
+                    c_tokens
+                )
+
+                # Approximate cost (based on typical gpt-4o rates for now)
+                cost = (p_tokens * 5.0 / 1000000) + (c_tokens * 15.0 / 1000000)
+                llm_cost_usd_total.labels(model=self.openai_model).inc(cost)
+
             content = response.choices[0].message.content
             return content if content else ""
         except RateLimitError as e:
+            llm_requests_total.labels(model=self.openai_model, status="rate_limit").inc()
             logger.warning("OpenAI RateLimitError during chat completion", error=str(e))
             raise e
         except OpenAIError as e:
+            llm_requests_total.labels(model=self.openai_model, status="error").inc()
             logger.error("OpenAI APIError during chat completion", error=str(e))
             raise e
 
@@ -153,23 +177,27 @@ class OpenAIService:
         ]
 
         try:
-            stream = cast(
-                AsyncStream[ChatCompletionChunk],
-                await self.client.chat.completions.create(
-                    model=self.openai_model,
-                    messages=messages,  # type: ignore
-                    max_tokens=self.max_tokens_response,
-                    temperature=0.7,
-                    stream=True,
-                ),
-            )
+            llm_requests_total.labels(model=self.openai_model, status="success").inc()
+            with llm_latency_seconds.labels(model=self.openai_model).time():
+                stream = cast(
+                    AsyncStream[ChatCompletionChunk],
+                    await self.client.chat.completions.create(
+                        model=self.openai_model,
+                        messages=messages,  # type: ignore
+                        max_tokens=self.max_tokens_response,
+                        temperature=0.7,
+                        stream=True,
+                    ),
+                )
 
-            async for chunk in stream:
-                if chunk.choices and chunk.choices[0].delta.content is not None:
-                    yield chunk.choices[0].delta.content
+                async for chunk in stream:
+                    if chunk.choices and chunk.choices[0].delta.content is not None:
+                        yield chunk.choices[0].delta.content
         except RateLimitError as e:
+            llm_requests_total.labels(model=self.openai_model, status="rate_limit").inc()
             logger.warning("OpenAI RateLimitError during stream chat completion", error=str(e))
             raise e
         except OpenAIError as e:
+            llm_requests_total.labels(model=self.openai_model, status="error").inc()
             logger.error("OpenAI APIError during stream chat completion", error=str(e))
             raise e

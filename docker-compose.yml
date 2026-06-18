@@ -22,6 +22,8 @@ services:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--web.external-url=https://alliases.duckdns.org/BubbleBrain/prometheus/'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
       - "9290:9090"
     restart: unless-stopped
