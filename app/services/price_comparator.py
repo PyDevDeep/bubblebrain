@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from app.core.config import Settings
 from app.core.logging_config import get_logger
+from app.core.metrics import price_alerts_total
 from app.schemas.cache import CacheEntry
 from app.schemas.scraper import PriceComparisonResult
 from app.services.cache_service import CacheService
@@ -139,11 +140,13 @@ class PriceComparator:
             if diff_woo < self.margin_threshold or diff_woo > self.margin_threshold:
                 needs_alert = True
                 alert_reason = "checkout_margin_issue" if is_checkout else "low_margin"
+                price_alerts_total.inc()
                 await self.cache_service.invalidate(sku)
 
         elif woo_result.price_uah and not supp_price_uah:
             needs_alert = True
             alert_reason = "scraper_failed"
+            price_alerts_total.inc()
 
         return PriceComparisonResult(
             product_name=woo_result.name,

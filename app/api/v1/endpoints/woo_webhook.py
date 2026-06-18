@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.core.config import get_settings
 from app.core.db import AsyncSessionLocal, commit_with_retry
+from app.core.metrics import leads_created_total
 from app.models.lead import Lead
 from app.services.telegram_service import TelegramService
 
@@ -51,6 +52,7 @@ async def process_woo_order_background(payload: WooOrderPayload) -> None:
             )
             session.add(db_lead)
             await commit_with_retry(session)
+            leads_created_total.labels(type="conversion", status="success").inc()
 
             # Формуємо повідомлення
             items_lines: list[str] = []

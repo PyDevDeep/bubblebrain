@@ -15,6 +15,7 @@ from tenacity import (
 
 from app.core.config import get_settings
 from app.core.db import AsyncSessionLocal, commit_with_retry
+from app.core.metrics import leads_created_total
 from app.middleware.rate_limiter import limiter
 from app.models.lead import Lead
 from app.schemas.lead import ContactFormLead
@@ -178,6 +179,7 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
             f"🥷 <b>IP:</b> {client_ip}\n\n"
             f"#HOT_LEAD #ID{lead_id}"
         )
+        leads_created_total.labels(type="checkout", status="success").inc()
         background_tasks.add_task(
             process_lead_background, lead_id, message, "hot_lead", lead_data.session_id
         )
@@ -191,6 +193,7 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
             f"🥷 <b>IP:</b> {client_ip}\n\n"
             f"#БОТ_ЛІД #ID{lead_id}"
         )
+        leads_created_total.labels(type="contact", status="success").inc()
         background_tasks.add_task(
             process_lead_background, lead_id, message, "lead", lead_data.session_id
         )
