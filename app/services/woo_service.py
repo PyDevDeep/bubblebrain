@@ -165,3 +165,66 @@ class WooService:
                 )
 
         return products
+
+    async def get_daily_orders_stats(self) -> dict[str, Any]:
+        """Отримує статистику замовлень за останні 24 години."""
+        from datetime import UTC, datetime, timedelta
+        from typing import Any, cast
+
+        after_date = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+
+        params: dict[str, str | int] = {
+            "consumer_key": self.woo_ck,
+            "consumer_secret": self.woo_cs,
+            "after": after_date,
+            "per_page": 100,
+        }
+
+        total = 0
+        processing = 0
+        on_hold = 0
+        completed = 0
+        paid = 0
+        tags: dict[str, int] = {}
+
+        orders_url = self.base_url.replace("/products", "/orders")
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                resp = await client.get(orders_url, params=params)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    if isinstance(data, list):
+                        orders = cast(list[dict[str, Any]], data)
+                        total = len(orders)
+                        for order in orders:
+                            status = str(order.get("status", ""))
+                            if status == "processing":
+                                processing += 1
+                            elif status == "on-hold":
+                                on_hold += 1
+                            elif status == "completed":
+                                completed += 1
+                                paid += 1
+
+                            # Парсинг міток з meta_data (наприклад, utm_source)
+                            meta_data_raw = order.get("meta_data", [])
+                            if isinstance(meta_data_raw, list):
+                                meta_data = cast(list[dict[str, Any]], meta_data_raw)
+                                for meta in meta_data:
+                                    key = str(meta.get("key", ""))
+                                    if key in ("utm_source", "source", "bot_tag", "created_via"):
+                                        val = str(meta.get("value", "")).strip().lower()
+                                        if val:
+                                            tags[val] = tags.get(val, 0) + 1
+            except Exception as e:
+                logger.error("WooCommerce API Orders Stats Error", error=str(e))
+
+        return {
+            "total": total,
+            "processing": processing,
+            "on-hold": on_hold,
+            "completed": completed,
+            "paid": paid,
+            "tags": tags,
+        }
