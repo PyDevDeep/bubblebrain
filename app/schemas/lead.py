@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.constants import ERR_INVALID_PHONE_SHORT
+
 
 class ContactFormLead(BaseModel):
     name: str = Field(..., max_length=50, pattern=r"^[A-Za-zА-Яа-яЄєІіЇїҐґ\s\-]+$")
@@ -22,5 +24,5 @@ class ContactFormLead(BaseModel):
         v = str(v)
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^(?:\+?38)?0\d{9}$", cleaned):
-            raise ValueError("Некоректний формат телефону")
+            raise ValueError(ERR_INVALID_PHONE_SHORT)
         return cleaned

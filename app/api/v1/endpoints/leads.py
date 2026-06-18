@@ -14,6 +14,15 @@ from tenacity import (
 )
 
 from app.core.config import get_settings
+from app.core.constants import (
+    ALERT_BOT_LEAD,
+    ALERT_HOT_LEAD,
+    BTN_DECLINE,
+    BTN_IN_PROGRESS,
+    BTN_PRODUCT_LINK,
+    BTN_SUCCESS,
+    MAX_PAYLOAD_SIZE,
+)
 from app.core.db import AsyncSessionLocal, commit_with_retry
 from app.core.metrics import leads_created_total
 from app.middleware.rate_limiter import limiter
@@ -23,8 +32,6 @@ from app.services.chat_memory_service import ChatMemoryService
 from app.services.telegram_service import TelegramService
 
 leads_router = APIRouter()
-
-MAX_PAYLOAD_SIZE = 2048
 
 
 @retry(
@@ -52,10 +59,10 @@ async def process_lead_background(
     reply_markup = {
         "inline_keyboard": [
             [
-                {"text": "✅ Успіх (Продано)", "callback_data": f"lead_status:{lead_id}:success"},
-                {"text": "❌ Відмова", "callback_data": f"lead_status:{lead_id}:decline"},
+                {"text": BTN_SUCCESS, "callback_data": f"lead_status:{lead_id}:success"},
+                {"text": BTN_DECLINE, "callback_data": f"lead_status:{lead_id}:decline"},
             ],
-            [{"text": "⏳ В процесі", "callback_data": f"lead_status:{lead_id}:in_progress"}],
+            [{"text": BTN_IN_PROGRESS, "callback_data": f"lead_status:{lead_id}:in_progress"}],
         ]
     }
     async with AsyncSessionLocal() as session:
@@ -86,7 +93,7 @@ async def process_lead_background(
 
                     if product_url:
                         reply_markup["inline_keyboard"].insert(
-                            0, [{"text": "🔗 Товар на сайті", "url": product_url}]
+                            0, [{"text": BTN_PRODUCT_LINK, "url": product_url}]
                         )
 
             await send_telegram_notification(
@@ -169,29 +176,28 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
     client_ip = request.client.host if request.client else "Unknown"
 
     if lead_data.lead_type == "checkout":
-        message = (
-            f"🛒 <b>Нове ЗАМОВЛЕННЯ з Бота (Hot Lead) {lead_id}</b>\n"
-            f"📅 <b>Дата:</b> {now_str}\n\n"
-            f"👨 <b>Ім'я:</b> {lead_data.name} {lead_data.surname or ''}\n"
-            f"📞 <b>Телефон:</b> <code>{lead_data.phone_number}</code>\n"
-            f"📱 <b>Спосіб зв'язку:</b> {lead_data.contact_method}\n"
-            f"🚛 <b>Адреса доставки:</b> {lead_data.delivery_address or 'Не вказана'}\n\n"
-            f"🥷 <b>IP:</b> {client_ip}\n\n"
-            f"#HOT_LEAD #ID{lead_id}"
+        message = ALERT_HOT_LEAD.format(
+            lead_id=lead_id,
+            now_str=now_str,
+            name=lead_data.name,
+            surname=lead_data.surname or "",
+            phone=lead_data.phone_number,
+            method=lead_data.contact_method,
+            address=lead_data.delivery_address or "Не вказана",
+            ip=client_ip,
         )
         leads_created_total.labels(type="checkout", status="success").inc()
         background_tasks.add_task(
             process_lead_background, lead_id, message, "hot_lead", lead_data.session_id
         )
     else:
-        message = (
-            f"🔥 <b>НОВИЙ ЛІД З БОТА {lead_id}</b>\n"
-            f"📅 <b>Дата:</b> {now_str}\n\n"
-            f"👨 <b>Ім'я:</b> {lead_data.name}\n"
-            f"📞 <b>Телефон:</b> <code>{lead_data.phone_number}</code>\n"
-            f"📱 <b>Спосіб зв'язку:</b> {lead_data.contact_method}\n\n"
-            f"🥷 <b>IP:</b> {client_ip}\n\n"
-            f"#БОТ_ЛІД #ID{lead_id}"
+        message = ALERT_BOT_LEAD.format(
+            lead_id=lead_id,
+            now_str=now_str,
+            name=lead_data.name,
+            phone=lead_data.phone_number,
+            method=lead_data.contact_method,
+            ip=client_ip,
         )
         leads_created_total.labels(type="contact", status="success").inc()
         background_tasks.add_task(

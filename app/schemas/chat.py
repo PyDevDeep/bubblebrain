@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.constants import ERR_INVALID_PHONE
+
 
 class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=4000)
@@ -19,9 +21,7 @@ class LeadData(BaseModel):
     def validate_phone(cls, v: str) -> str:
         cleaned = re.sub(r"[\s\-\(\)]", "", v)
         if not re.match(r"^(?:\+380|380|0)\d{9}$", cleaned):
-            raise ValueError(
-                "Невірний формат номеру. Очікується формат +380XXXXXXXXX або 0XXXXXXXXX"
-            )
+            raise ValueError(ERR_INVALID_PHONE)
         return cleaned
 
 

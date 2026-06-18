@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 from sqlalchemy import select
 
+from app.core.constants import STATISTICS_TEMPLATE
 from app.core.db import AsyncSessionLocal
 from app.models.chat_memory import ChatMessage
 from app.services.telegram_service import TelegramService
@@ -93,23 +94,22 @@ async def gather_and_send_daily_report_job() -> None:
     date_str = datetime.now(UTC).strftime("%d.%m.%Y")
 
     msg_lines = [
-        f"📊 <b>Щоденна Статистика Бота ({date_str})</b>",
-        "",
-        f"👤 <b>Унікальних користувачів:</b> {unique_users}",
-        f"🪙 <b>Використані токени LLM:</b> {int(prom_stats['tokens'])}",
-        f"⏱ <b>Середнє латенсі LLM:</b> {prom_stats['latency_avg']:.2f} сек",
-        f"⚠️ <b>Збоїв (помилок):</b> {int(prom_stats['errors'])}",
-        f"🏷 <b>Алерти цін:</b> {int(prom_stats['price_alerts'])}",
-        "",
-        f"📩 <b>Звичайних лідів:</b> {int(prom_stats['leads_contact'])}",
-        f"🔥 <b>Хот лідів:</b> {int(prom_stats['leads_hot'])}",
-        f"✅ <b>Конверсій через бота:</b> {int(prom_stats['conversions'])}",
-        "",
-        "🛍 <b>WooCommerce Замовлення (за 24 год):</b>",
-        f"   Всього: {woo_stats.get('total', 0)}",
-        f"   В обробці: {woo_stats.get('processing', 0)}",
-        f"   На утриманні: {woo_stats.get('on-hold', 0)}",
-        f"   Виконано (Оплачено): {woo_stats.get('paid', 0)}",
+        line.format(
+            date_str=date_str,
+            unique_users=unique_users,
+            tokens=int(prom_stats["tokens"]),
+            latency_avg=prom_stats["latency_avg"],
+            errors=int(prom_stats["errors"]),
+            price_alerts=int(prom_stats["price_alerts"]),
+            leads_contact=int(prom_stats["leads_contact"]),
+            leads_hot=int(prom_stats["leads_hot"]),
+            conversions=int(prom_stats["conversions"]),
+            woo_total=woo_stats.get("total", 0),
+            woo_processing=woo_stats.get("processing", 0),
+            woo_on_hold=woo_stats.get("on-hold", 0),
+            woo_paid=woo_stats.get("paid", 0),
+        )
+        for line in STATISTICS_TEMPLATE
     ]
 
     # Мітки

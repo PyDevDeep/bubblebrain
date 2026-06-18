@@ -5,7 +5,12 @@ from typing import Any
 import httpx
 
 from app.core.config import Settings
-from app.core.constants import DEFAULT_LEAD_CONTEXT, DEFAULT_MISSING_VALUE, TELEGRAM_LEAD_TEMPLATE
+from app.core.constants import (
+    CHAT_HISTORY_CAPTION,
+    DEFAULT_LEAD_CONTEXT,
+    DEFAULT_MISSING_VALUE,
+    TELEGRAM_LEAD_TEMPLATE,
+)
 from app.core.logging_config import get_logger
 from app.schemas.chat import LeadData
 
@@ -83,7 +88,7 @@ class TelegramService:
                 history_lines = [f"{msg['role'].upper()}: {msg['content']}" for msg in history]
                 history_text = "\n\n".join(history_lines)
                 doc_name = f"chat_history_{session_id}.txt"
-                caption = f"📜 Історія переписки ({session_id})"
+                caption = CHAT_HISTORY_CAPTION.format(session_id=session_id)
                 await self.send_document(doc_name, history_text, caption, alert_type)
 
         return alert_success

@@ -7,6 +7,14 @@ from typing import Any, cast
 
 from app.core.config import Settings
 from app.core.constants import (
+    ALERT_CHAT_LEAD,
+    ALERT_PRICE_CLARIFICATION,
+    BTN_DECLINE,
+    BTN_IN_PROGRESS,
+    BTN_PRODUCT_LINK,
+    BTN_SUCCESS_SHORT,
+    CHAT_HISTORY_MARKER,
+    CHAT_QUERY_MARKER,
     INTENT_CHECKOUT,
     INTENT_CONTACT,
     INTENT_FAQ,
@@ -335,40 +343,35 @@ class RAGEngine:
                     await session.refresh(db_lead)
                     lead_id = int(db_lead.id)  # type: ignore
 
-                # Динамічний заголовок і теги
-                header = (
-                    "⚠️ <b>УТОЧНЕННЯ ЦІНИ (ЛІД)</b>"
-                    if is_price_clarification
-                    else "🔥 <b>НОВИЙ ЛІД З БОТА</b>"
-                )
-                hashtag = "#PRICE_LEAD" if is_price_clarification else "#BOT_LEAD"
-
-                message = (
-                    f"{header} <b>[ID: {lead_id}]</b>\n\n"
-                    f"👤 <b>Ім'я:</b> Клієнт з чату\n"
-                    f"📞 <b>Контакт:</b> <code>{phone_number}</code>\n"
-                    f"📱 <b>Спосіб:</b> chat\n"
-                    f"💬 <b>Запит:</b> '{question}'\n\n"
-                    f"{hashtag} #ID{lead_id}"
-                )
+                if is_price_clarification:
+                    message = ALERT_PRICE_CLARIFICATION.format(
+                        lead_id=lead_id, phone=phone_number, question=question
+                    )
+                else:
+                    message = ALERT_CHAT_LEAD.format(
+                        lead_id=lead_id, phone=phone_number, question=question
+                    )
 
                 # Безпечне формування кнопок: уникаємо AttributeError та помилок типізації
                 inline_keyboard: list[list[dict[str, Any]]] = []
                 if product_url:
-                    inline_keyboard.append([{"text": "🔗 Товар на сайті", "url": product_url}])
+                    inline_keyboard.append([{"text": BTN_PRODUCT_LINK, "url": product_url}])
 
                 inline_keyboard.extend(
                     [
                         [
-                            {"text": "✅ Успіх", "callback_data": f"lead_status:{lead_id}:success"},
                             {
-                                "text": "❌ Відмова",
+                                "text": BTN_SUCCESS_SHORT,
+                                "callback_data": f"lead_status:{lead_id}:success",
+                            },
+                            {
+                                "text": BTN_DECLINE,
                                 "callback_data": f"lead_status:{lead_id}:decline",
                             },
                         ],
                         [
                             {
-                                "text": "⏳ В процесі",
+                                "text": BTN_IN_PROGRESS,
                                 "callback_data": f"lead_status:{lead_id}:in_progress",
                             }
                         ],
@@ -543,7 +546,7 @@ class RAGEngine:
 
         final_context = prepended_context + context_chunks
 
-        extended_user_message = f"[CHAT HISTORY]\n{history_context if history_context else 'This is the first message.'}\n\n[CURRENT CLIENT QUERY]\n{question}"
+        extended_user_message = f"{CHAT_HISTORY_MARKER}\n{history_context if history_context else 'This is the first message.'}\n\n{CHAT_QUERY_MARKER}\n{question}"
 
         return PipelineContext(
             is_valid=True,

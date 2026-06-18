@@ -5,6 +5,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, Request, status
 
 from app.core.config import get_settings
+from app.core.constants import BTN_DECLINE, BTN_IN_PROGRESS, BTN_STATUS, BTN_SUCCESS
 from app.core.db import AsyncSessionLocal, commit_with_retry
 from app.models.lead import Lead
 from app.services.telegram_service import TelegramService
@@ -52,9 +53,9 @@ async def process_telegram_update(update: dict[str, Any]) -> None:
                 return
 
             status_map = {
-                "success": "✅ Успіх (Продано)",
-                "decline": "❌ Відмова",
-                "in_progress": "⏳ В процесі",
+                "success": BTN_SUCCESS,
+                "decline": BTN_DECLINE,
+                "in_progress": BTN_IN_PROGRESS,
             }
             status_text = status_map.get(new_status, new_status)
 
@@ -74,7 +75,12 @@ async def process_telegram_update(update: dict[str, Any]) -> None:
                 # Залишимо кнопку яка не клікається або оновимо текст
                 new_markup = {
                     "inline_keyboard": [
-                        [{"text": f"Статус: {status_text}", "callback_data": "ignore"}]
+                        [
+                            {
+                                "text": BTN_STATUS.format(status_text=status_text),
+                                "callback_data": "ignore",
+                            }
+                        ]
                     ]
                 }
                 await telegram_service.update_message_reply_markup(

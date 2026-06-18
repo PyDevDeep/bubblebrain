@@ -6,6 +6,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.core.config import Settings
+from app.core.constants import SCRAPER_TIMEOUT_CONNECT, SCRAPER_TIMEOUT_DEFAULT, SCRAPER_USER_AGENT
 from app.core.logging_config import get_logger
 from app.schemas.scraper import HotlineProduct, SupplierProduct
 
@@ -16,14 +17,14 @@ class ScraperService:
     def __init__(self, settings: Settings) -> None:
         self.euro_rate = settings.euro_rate
         self.supplier_url = settings.supplier_url
-        self.user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+        self.user_agent = SCRAPER_USER_AGENT
         self.headers = {
             "User-Agent": self.user_agent,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "uk,ru;q=0.9,en-US;q=0.8,en;q=0.7",
         }
-        # Жорсткий таймаут для парсингу: 7 секунд
-        self.timeout = httpx.Timeout(7.0, connect=3.0)
+        # Жорсткий таймаут для парсингу
+        self.timeout = httpx.Timeout(SCRAPER_TIMEOUT_DEFAULT, connect=SCRAPER_TIMEOUT_CONNECT)
 
     async def _fetch_html(self, url: str) -> httpx.Response | None:
         async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:

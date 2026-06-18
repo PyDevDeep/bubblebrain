@@ -6,6 +6,8 @@ from app.core.config import Settings
 from app.core.constants import (
     ALERT_MARGIN_ISSUE,
     ALERT_SCRAPER_FAILED,
+    BTN_CHANGE_PRICE,
+    BTN_VIEW_PRODUCT,
     INTENT_CHECKOUT,
     INTENT_SEARCH,
     LINK_CHECKOUT,
@@ -110,9 +112,7 @@ class ProductCheckoutIntentHandler:
                     reply_markup = None
                     if result.woo_url:
                         reply_markup = {
-                            "inline_keyboard": [
-                                [{"text": "📦 Змінити ціну (WooCommerce)", "url": result.woo_url}]
-                            ]
+                            "inline_keyboard": [[{"text": BTN_CHANGE_PRICE, "url": result.woo_url}]]
                         }
 
                     alert_success = await self.telegram_service.send_alert(
@@ -190,7 +190,10 @@ class ProductCheckoutIntentHandler:
                         f"{result.woo_url}{connector}bot_source=direct&bot_chat_id={session_id}"
                     )
                     extracted_links.append(
-                        {"text": f"View {result.product_name}", "url": tracked_url}
+                        {
+                            "text": BTN_VIEW_PRODUCT.format(product_name=result.product_name),
+                            "url": tracked_url,
+                        }
                     )
 
                 system_instructions.append(

@@ -12,11 +12,12 @@ def main():
         print("Error: TELEGRAM_BOT_TOKEN not found in .env")
         sys.exit(1)
 
-    # The domain should be the public URL where the webhook will be received.
-    # In your case, it seems to be https://alliases.duckdns.org/BubbleBrain
-    # Adjust this if needed!
-    base_url = "https://alliases.duckdns.org/BubbleBrain"
-    webhook_url = f"{base_url}/api/v1/telegram/webhook"
+    base_url = os.getenv("WEBHOOK_BASE_URL")
+    if not base_url:
+        print("Error: WEBHOOK_BASE_URL not found in .env")
+        sys.exit(1)
+
+    webhook_url = f"{base_url.rstrip('/')}/api/v1/telegram/webhook"
 
     api_url = f"https://api.telegram.org/bot{token}/setWebhook"
     print(f"Setting webhook to: {webhook_url}")

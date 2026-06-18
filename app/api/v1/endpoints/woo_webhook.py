@@ -4,6 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, status
 from pydantic import BaseModel
 
 from app.core.config import get_settings
+from app.core.constants import ALERT_WOO_ORDER
 from app.core.db import AsyncSessionLocal, commit_with_retry
 from app.core.metrics import leads_created_total
 from app.models.lead import Lead
@@ -62,13 +63,15 @@ async def process_woo_order_background(payload: WooOrderPayload) -> None:
                     f"- {item.name}{sku_info} (x{item.quantity}) - {item.total} {payload.currency}"
                 )
             items_str = "\n".join(items_lines)
-            message = (
-                f"🔥 <b>#БОТ_ПРОДАЖ</b> [Замовлення #{payload.order_id}]\n\n"
-                f"👤 <b>Клієнт:</b> {payload.first_name} {payload.last_name}\n"
-                f"📞 <b>Телефон:</b> <code>{payload.phone}</code>\n"
-                f"💰 <b>Сума:</b> {payload.total} {payload.currency}\n"
-                f"📦 <b>Товари:</b>\n{items_str}\n\n"
-                f"#ID{payload.session_id}"
+            message = ALERT_WOO_ORDER.format(
+                order_id=payload.order_id,
+                first_name=payload.first_name,
+                last_name=payload.last_name,
+                phone=payload.phone,
+                total=payload.total,
+                currency=payload.currency,
+                items_str=items_str,
+                session_id=payload.session_id,
             )
 
             alert_success = await telegram_service.send_alert(
