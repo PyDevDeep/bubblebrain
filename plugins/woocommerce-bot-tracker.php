@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce Bot Sales Tracker
  * Description: Відстеження продажів з Telegram-бота (BubbleBrain). Зберігає UTM та session_id у куки і відправляє вебхук на бекенд.
  * Version: 1.0.0
- * Author: FlowGateAI
+ * Author: PyDevDeep
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -29,6 +29,10 @@ class BotSalesTracker {
         }
     }
 
+    /**
+     * @param int $order_id
+     * @param array $data
+     */
     public function save_bot_lead_to_order( $order_id, $data ) {
         if ( isset( $_COOKIE['_bot_lead_session_id'] ) ) {
             $bot_chat_id = sanitize_text_field( $_COOKIE['_bot_lead_session_id'] );
@@ -37,12 +41,20 @@ class BotSalesTracker {
         }
     }
 
+    /**
+     * @param int $order_id
+     * @param \WC_Order|bool $order
+     */
     public function notify_backend_of_order( $order_id, $order ) {
         $is_bot_lead = get_post_meta( $order_id, '_is_bot_lead', true );
 
         if ( $is_bot_lead === 'true' ) {
             $bot_chat_id = get_post_meta( $order_id, '_bot_user_id', true );
             $order = wc_get_order( $order_id );
+
+            if ( ! $order ) {
+                return;
+            }
 
             $payload = array(
                 'order_id'   => $order_id,
