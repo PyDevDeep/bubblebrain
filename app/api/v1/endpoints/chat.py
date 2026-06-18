@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from app.core.config import get_settings
 from app.core.constants import MSG_STREAM_CHAT_FAILED, MSG_SYNC_CHAT_FAILED
 from app.core.logging_config import get_logger
+from app.core.metrics import bot_messages_total
 from app.core.security import verify_api_key
 from app.middleware.rate_limiter import limiter
 from app.schemas.chat import ChatRequest, ChatResponse
@@ -81,16 +82,18 @@ async def chat_completion(
         rag_response = await rag_engine.process_query(
             chat_request.question, session_id=session_id, client_ip=client_ip
         )
-        return ChatResponse(
+        bot_messages_total.labels(status="success").inc()
+        return ChatResponse(  # type: ignore[call-arg]
             answer=rag_response.answer,
             sources=rag_response.sources,
             has_context=rag_response.has_context,
             session_id=session_id,
         )
     except Exception as e:
+        bot_messages_total.labels(status="error").inc()
         logger.error("Critical error in sync chat pipeline", error=str(e), exc_info=True)
         # Fallback відповідь замість 500 помилки
-        return ChatResponse(
+        return ChatResponse(  # type: ignore[call-arg]
             answer=MSG_SYNC_CHAT_FAILED,
             sources=[],
             has_context=False,
@@ -119,7 +122,9 @@ async def chat_stream(
                 chat_request.question, session_id=session_id, client_ip=client_ip
             ):
                 yield f"data: {token}\n\n"
+            bot_messages_total.labels(status="success").inc()
         except Exception as e:
+            bot_messages_total.labels(status="error").inc()
             logger.error("Critical error during streaming", error=str(e), exc_info=True)
             yield f"data: {MSG_STREAM_CHAT_FAILED}\n\n"
         finally:
