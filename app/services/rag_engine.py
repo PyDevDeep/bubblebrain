@@ -498,11 +498,20 @@ class RAGEngine:
                 return []
             return await asyncio.gather(*vector_tasks, return_exceptions=True)
 
-        vector_results, intent_results = await asyncio.gather(
-            fetch_vectors(),
-            self._get_intent_context(intent_data, history, session_id),
-            return_exceptions=True,
-        )
+        t_vectors = asyncio.create_task(fetch_vectors())
+        t_intent = asyncio.create_task(self._get_intent_context(intent_data, history, session_id))
+
+        await asyncio.gather(t_vectors, t_intent, return_exceptions=True)
+
+        if t_vectors.exception():
+            vector_results = cast(BaseException, t_vectors.exception())
+        else:
+            vector_results = t_vectors.result()
+
+        if t_intent.exception():
+            intent_results = cast(BaseException, t_intent.exception())
+        else:
+            intent_results = t_intent.result()
 
         if not isinstance(vector_results, BaseException):
             for res in vector_results:
