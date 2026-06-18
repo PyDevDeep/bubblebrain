@@ -451,7 +451,20 @@ class RAGEngine:
             ]
         )
 
-        intent_data = await self.detect_intent(question, history_context)
+        # Спочатку векторна звірка ключового слова
+        query_vector = await self.openai_service.generate_embedding(question)
+        faq_results = await asyncio.to_thread(
+            self.vector_service.query_similar,
+            query_vector=query_vector,
+            top_k=1,
+            score_threshold=self.threshold,
+        )
+
+        if faq_results and faq_results[0].get("metadata", {}).get("source") == "store_policy":
+            intent_data = {"intent": INTENT_FAQ, "normalized_faq_queries": [question]}
+        else:
+            intent_data = await self.detect_intent(question, history_context)
+
         intent_type = intent_data.get("intent", INTENT_FAQ)
 
         if intent_type in [INTENT_PRODUCT, INTENT_SEARCH, INTENT_CHECKOUT]:
@@ -540,6 +553,7 @@ class RAGEngine:
         """
         Processes a user query synchronously and returns a complete RAGResponse.
         """
+
         ctx = await self._prepare_rag_pipeline(question, session_id, client_ip)
 
         if not ctx.is_valid:
