@@ -12,8 +12,8 @@ logger = get_logger(__name__)
 
 async def extract_text(file: UploadFile) -> str:
     """
-    Витягування тексту з файлу залежно від MIME-типу (PDF, TXT, DOCX, MD).
-    Завантажує файл у пам'ять для уникнення блокування Event Loop.
+    Extract text from a file depending on its MIME type (PDF, TXT, DOCX, MD).
+    Loads the file into memory to avoid blocking the Event Loop.
     """
     content_type = file.content_type
     content = await file.read()
@@ -26,7 +26,7 @@ async def extract_text(file: UploadFile) -> str:
     filename_lower = filename.lower()
 
     try:
-        # Markdown файли можуть передаватися з різними MIME-типами, тому перевіряємо і розширення
+        # Markdown files can be sent with different MIME types, so we also check the extension
         if content_type in ("text/plain", "text/markdown") or filename_lower.endswith(
             (".txt", ".md")
         ):
@@ -68,13 +68,13 @@ async def extract_text(file: UploadFile) -> str:
 
 def chunk_text(text: str, chunk_size: int = 512, overlap: int = 50) -> list[str]:
     """
-    Розбиття тексту на чанки з перекриттям для збереження контексту.
-    Базується на розбитті по реченнях з урахуванням ліміту символів (~ токенів * 4).
+    Split text into chunks with overlap to preserve context.
+    Based on splitting by sentences taking into account the character limit (~ tokens * 4).
     """
     if not text or not text.strip():
         return []
 
-    # Розбиття по реченнях із збереженням розділових знаків
+    # Split by sentences preserving punctuation marks
     sentences = re.split(r"(?<=[.!?])\s+", text.strip())
     sentences = [s.strip() for s in sentences if s.strip()]
 

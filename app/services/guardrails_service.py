@@ -1,5 +1,5 @@
 """
-Сервіс для забезпечення базового захисту від Prompt Injection (Guardrails).
+Service for providing basic protection against Prompt Injection (Guardrails).
 """
 
 import re
@@ -12,24 +12,24 @@ logger = get_logger(__name__)
 
 class GuardrailsService:
     """
-    Клас, що відповідає за валідацію користувацького вводу
-    на наявність спроб обходу системних інструкцій.
+    Class responsible for validating user input
+    for attempts to bypass system instructions.
     """
 
     def __init__(self) -> None:
         """
-        Ініціалізує сервіс, завантажуючи та компілюючи регулярні вирази
-        для виявлення атак англійською, українською та російською мовами.
+        Initializes the service by loading and compiling regular expressions
+        for detecting attacks in English, Ukrainian, and Russian.
         """
-        # Регулярні вирази та патерни для виявлення спроб Prompt Injection (Англійська + Українська + Російська)
+        # Regular expressions and patterns for detecting Prompt Injection attempts (English + Ukrainian + Russian)
         self.injection_patterns = INJECTION_PATTERNS
 
         self.compiled_patterns = [re.compile(p) for p in self.injection_patterns]
 
     def validate_input(self, text: str, client_ip: str | None = None) -> bool:
         """
-        Перевіряє ввід на наявність патернів Prompt Injection.
-        Повертає True, якщо ввід безпечний, і False, якщо знайдена спроба ін'єкції.
+        Checks input for Prompt Injection patterns.
+        Returns True if the input is safe, and False if an injection attempt is found.
         """
         if not text:
             return True

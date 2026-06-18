@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 
 class ProductCheckoutIntentHandler:
+    """Handler for product and checkout intents."""
+
     def __init__(
         self,
         price_comparator: PriceComparator,
@@ -55,6 +57,7 @@ class ProductCheckoutIntentHandler:
         extracted_links: list[dict[str, str]],
         session_id: str,
     ) -> IntentContextResult:
+        """Handles the product or checkout intent."""
         is_checkout = intent_type == INTENT_CHECKOUT
         requires_lead = False
         lead_form_type = None
@@ -80,7 +83,7 @@ class ProductCheckoutIntentHandler:
                 new_intent_type=INTENT_SEARCH,
             )
 
-        # Виносимо формування характеристик в окремий блок, щоб вони завжди були доступні
+        # Move the characteristics formatting into a separate block so they are always available
         attributes_facts: list[str] = []
         if result.attributes:
             attr_str = "\n".join(f"- {k}: {v}" for k, v in result.attributes.items())
@@ -88,9 +91,9 @@ class ProductCheckoutIntentHandler:
         if result.short_description:
             attributes_facts.append(f"Description:\n{result.short_description}")
 
-        # ГОЛОВНИЙ РОЗПОДІЛ ЛОГІКИ
+        # MAIN LOGIC DISTRIBUTION
         if is_checkout:
-            # 1. КЛІЄНТ ХОЧЕ КУПИТИ: тут діють жорсткі правила перевірки маржі
+            # 1. CLIENT WANTS TO BUY: strict margin check rules apply here
             if result.needs_alert:
                 requires_lead = True
                 lead_form_type = "contact"
@@ -153,7 +156,7 @@ class ProductCheckoutIntentHandler:
                     product_facts.extend(attributes_facts)
 
             else:
-                # Маржа зійшлася, клієнт може купувати
+                # Margin is okay, client can buy
                 requires_lead = True
                 lead_form_type = "checkout"
                 if result.woo_url:
@@ -182,7 +185,7 @@ class ProductCheckoutIntentHandler:
                 product_facts.extend(attributes_facts)
 
         else:
-            # 2. КЛІЄНТ ПРОСТО ЗАПИТУЄ ІНФОРМАЦІЮ: видаємо дані, ігноруючи блокування
+            # 2. CLIENT JUST ASKING FOR INFO: return data, ignoring blocking
             if result.woo_price:
                 if result.woo_url:
                     connector = "&" if "?" in result.woo_url else "?"
@@ -209,7 +212,7 @@ class ProductCheckoutIntentHandler:
                     if result.availability_status == "instock"
                     else STATUS_OUT_OF_STOCK
                 )
-                # Для звичайного запиту ціна завжди "Орієнтовна"
+                # For a normal request, the price is always "Estimated"
                 product_facts.append(
                     f"Data: Product '{result.product_name}', Ціна {result.woo_price} UAH. Conditions: {status_text}.\n"
                     f"CRITICAL: If 'In stock' - 1-3 days. 'Under order' - 14-20 days. DO NOT PUT LINKS IN TEXT!"
@@ -233,6 +236,8 @@ class ProductCheckoutIntentHandler:
 
 
 class SearchIntentHandler:
+    """Handler for search intents."""
+
     def __init__(self, price_comparator: PriceComparator):
         self.price_comparator = price_comparator
 
@@ -245,6 +250,7 @@ class SearchIntentHandler:
         extracted_links: list[dict[str, str]],
         session_id: str,
     ) -> IntentContextResult:
+        """Handles the search intent."""
         requires_lead = False
         lead_form_type = None
         strict_term = str(
@@ -321,7 +327,7 @@ class SearchIntentHandler:
         if woo_products:
             search_facts.append(SEARCH_FOUND_HEADER)
 
-            # Додаємо дисклеймер щодо орієнтовності цін один раз
+            # Add a disclaimer about price estimation once
             system_instructions.append(
                 "⚠️ ВАЖЛИВО: Завжди повідомляй клієнту: 'Увага! Ціна та наявність товару можуть змінюватися протягом дня. "
                 "Будь ласка, уточнюйте актуальну вартість та наявність у менеджера перед оплатою (у чаті або за телефоном)'."
@@ -332,7 +338,7 @@ class SearchIntentHandler:
                     STATUS_INSTOCK if product.stock_status == "instock" else STATUS_OUT_OF_STOCK
                 )
 
-                # Додаємо SKU, щоб LLM точно ідентифікувала товар за артикулом
+                # Add SKU so LLM accurately identifies the product by its article
                 sku_line = f"\n  Артикул (SKU): {product.sku}" if product.sku else ""
 
                 search_facts.append(

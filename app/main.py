@@ -24,6 +24,7 @@ logger = get_logger(__name__)
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
+    """Lifespan events for FastAPI application."""
     # on_startup
     from app.core.db import init_db
 
@@ -32,7 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     settings = get_settings()
     setup_logging(settings.log_level)
 
-    # --- ДОДАНО ДЛЯ ФІКСУ КЕШУ ---
+    # --- ADDED FOR CACHE FIX ---
     from app.services.cache_service import CacheService
 
     cache_service = CacheService(settings)
@@ -53,12 +54,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     vector_service = VectorService(settings)
     await vector_service.initialize()
 
-    # ТЕХНІЧНИЙ БОРГ (TECH DEBT):
-    # Поточна реалізація крон-задач працює в пам'яті (APScheduler) і ОБМЕЖЕНА 1 воркером (--workers 1).
-    # При збільшенні трафіку і кількості воркерів (наприклад, --workers 4), scheduler запуститься 4 рази.
-    # Для виходу з MVP необхідно:
-    # Шлях А: Винести APScheduler в ізольований Docker-контейнер (окремий процес).
-    # Шлях Б: Використати розподілене блокування (Redis Lock або APScheduler RedisJobStore).
+    # TECHNICAL DEBT:
+    # Current implementation of cron jobs runs in memory (APScheduler) and is LIMITED to 1 worker (--workers 1).
+    # With increased traffic and number of workers (e.g., --workers 4), the scheduler will run 4 times.
+    # To move past MVP we need to:
+    # Path A: Move APScheduler to an isolated Docker container (separate process).
+    # Path B: Use distributed locking (Redis Lock or APScheduler RedisJobStore).
     from apscheduler.jobstores.sqlalchemy import (  # type: ignore[reportMissingTypeStubs]
         SQLAlchemyJobStore,
     )
@@ -75,7 +76,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         replace_existing=True,
     )
 
-    # Додаємо джобу для щоденної статистики о 09:00 (за Київським часом)
+    # Add job for daily statistics at 09:00 (Kyiv time)
     scheduler.add_job(  # type: ignore[reportUnknownMemberType]
         gather_and_send_daily_report_job,
         trigger=CronTrigger(hour=9, minute=0, timezone="Europe/Kyiv"),
@@ -97,6 +98,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 def create_application() -> FastAPI:
+    """Create and configure the FastAPI application instance."""
     settings = get_settings()
 
     app = FastAPI(
@@ -117,17 +119,18 @@ def create_application() -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)
     app.include_router(api_v1_router, prefix="/api/v1")
 
-    # Конфігурація Rate Limiter
+    # Rate Limiter configuration
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore
 
-    # АБСОЛЮТНИЙ ШЛЯХ ДЛЯ СТАТИКИ
+    # ABSOLUTE PATH FOR STATIC FILES
     base_dir = Path(__file__).resolve().parent.parent
     frontend_dir = base_dir / "frontend"
 
-    # ДІАГНОСТИЧНИЙ ЕНДПОІНТ: Дозволяє побачити, чи дійсно файли змонтовані в контейнер
+    # DIAGNOSTIC ENDPOINT: Allows checking if files are actually mounted in the container
     @app.get("/debug-fs")
     def debug_fs() -> dict[str, str | bool | list[str]]:
+        """Diagnostic endpoint to check if static files are mounted."""
         import os
 
         files_list: list[str] = os.listdir(str(frontend_dir)) if frontend_dir.exists() else []
@@ -137,11 +140,11 @@ def create_application() -> FastAPI:
             "files": files_list,
         }
 
-    _ = debug_fs  # Маскування для Pylance (запобігає помилці неактивного коду)
+    _ = debug_fs  # Masking for Pylance (prevents unused code error)
 
     app.mount("/widget", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
 
-    # Прометеус метрики
+    # Prometheus metrics
     from prometheus_client import make_asgi_app  # type: ignore[import-untyped]
 
     metrics_app = make_asgi_app()  # type: ignore

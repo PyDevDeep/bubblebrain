@@ -297,13 +297,14 @@ class RAGEngine:
     async def _try_capture_lead(
         self, question: str, session_id: str
     ) -> tuple[bool, PipelineContext | None]:
+        """Try to capture a lead from the user's query."""
         cleaned_query = re.sub(REGEX_CLEAN_QUERY, "", question)
         phone_match = re.search(REGEX_PHONE, cleaned_query)
         if phone_match:
             phone_number = phone_match.group(0)
             logger.info("Direct lead captured", session_id=session_id)
 
-            # --- Аналіз історії для класифікації ліда та пошуку товару ---
+            # --- Analyze history to classify the lead and search for product ---
             history = await self.chat_memory_service.get_history(session_id, limit=6)
             product_url = None
             is_price_clarification = False
@@ -311,13 +312,13 @@ class RAGEngine:
             if history:
                 bot_msgs = [m.get("content", "") for m in history if m.get("role") == "bot"]
                 for msg in reversed(bot_msgs):
-                    # Відновлено пропущену логіку регулярного виразу
+                    # Restored missing regular expression logic
                     match = re.search(r"(https?://\S+)", msg)
                     if match:
                         product_url = str(match.group(1)).strip()
                     break
 
-                # Шукаємо маркери проблемної маржі (з інструкцій, які ми додали в intent_handlers)
+                # Search for problematic margin markers (from the instructions we added in intent_handlers)
                 full_history_text = " ".join(bot_msgs).lower()
                 if "уточнення" in full_history_text or "фінальної ціни" in full_history_text:
                     is_price_clarification = True
@@ -352,7 +353,7 @@ class RAGEngine:
                         lead_id=lead_id, phone=phone_number, question=question
                     )
 
-                # Безпечне формування кнопок: уникаємо AttributeError та помилок типізації
+                # Safe button formatting: avoid AttributeError and typing errors
                 inline_keyboard: list[list[dict[str, Any]]] = []
                 if product_url:
                     inline_keyboard.append([{"text": BTN_PRODUCT_LINK, "url": product_url}])
@@ -380,7 +381,7 @@ class RAGEngine:
 
                 reply_markup = {"inline_keyboard": inline_keyboard}
 
-                # session_id гарантує, що telegram_service прикріпить TXT-файл історії
+                # session_id ensures that telegram_service will attach the history TXT file
                 lead_success = await self.telegram_service.send_alert(
                     message, alert_type="lead", session_id=session_id, reply_markup=reply_markup
                 )
@@ -454,7 +455,7 @@ class RAGEngine:
             ]
         )
 
-        # Спочатку векторна звірка ключового слова
+        # First, vector check of the keyword
         query_vector = await self.openai_service.generate_embedding(question)
         faq_results = await asyncio.to_thread(
             self.vector_service.query_similar,

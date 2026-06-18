@@ -57,6 +57,10 @@ async def test_get_chat_completion(mock_async_openai_class, mock_settings):
     mock_choice = MagicMock()
     mock_choice.message.content = "Chat completion response"
     mock_response.choices = [mock_choice]
+    mock_response.usage = MagicMock()
+    mock_response.usage.prompt_tokens = 10
+    mock_response.usage.completion_tokens = 20
+    mock_response.usage.total_tokens = 30
     mock_client.chat.completions.create.return_value = mock_response
 
     # Act

@@ -8,7 +8,7 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# auto_error=False дозволяє нам власноруч обробляти відсутність заголовка та віддавати 401 замість 403
+# auto_error=False allows us to manually handle the absence of the header and return 401 instead of 403
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
@@ -18,8 +18,8 @@ async def verify_api_key(
     settings: Settings = Depends(get_settings),
 ) -> str:
     """
-    FastAPI Dependency для валідації API-ключа з заголовка X-API-Key.
-    Захищає ендпоінти від несанкціонованого доступу.
+    FastAPI Dependency for validating the API key from the X-API-Key header.
+    Protects endpoints from unauthorized access.
     """
     client_ip = request.client.host if request.client else "unknown"
 
@@ -34,7 +34,7 @@ async def verify_api_key(
             detail="Missing API Key",
         )
 
-    # Використовуємо timing-safe порівняння, щоб унеможливити підбір ключа за часом відповіді
+    # Use timing-safe comparison to prevent timing attacks for key guessing
     is_valid = secrets.compare_digest(api_key, settings.api_key_secret.get_secret_value())
 
     if not is_valid:

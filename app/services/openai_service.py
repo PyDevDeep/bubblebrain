@@ -20,8 +20,8 @@ logger = get_logger(__name__)
 class OpenAIService:
     def __init__(self, settings: Settings) -> None:
         """
-        Iнiцiалiзацiя AsyncOpenAI клiєнта.
-        Збереження моделей та лімітів з конфігурації.
+        Initialize the AsyncOpenAI client.
+        Store models and limits from the configuration.
         """
         self.client = AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
         self.embedding_model = settings.embedding_model
@@ -35,7 +35,7 @@ class OpenAIService:
     )
     async def generate_embedding(self, text: str) -> list[float]:
         """
-        Генерацiя вектора розмiрнiстю 1536 для одного текстового фрагмента.
+        Generate a vector of dimension 1536 for a single text fragment.
         """
         if not text or not text.strip():
             raise ValueError("Input text for embedding cannot be empty")
@@ -60,7 +60,7 @@ class OpenAIService:
     )
     async def generate_embeddings_batch(self, texts: Sequence[str]) -> list[list[float]]:
         """
-        Батч-генерацiя embeddings для кiлькох текстiв за один API-виклик.
+        Batch generation of embeddings for multiple texts in a single API call.
         """
         if not texts:
             raise ValueError("Input texts list for batch embedding cannot be empty")
@@ -94,15 +94,15 @@ class OpenAIService:
         response_format: dict[str, str] | None = None,
     ) -> str:
         """
-        Генерацiя текстовоi вiдповiдi з RAG-контекстом.
+        Generate a text response with RAG context.
         """
         context_text = "\n\n".join(context_chunks)
 
         try:
-            # Підставляємо контекст у плейсхолдер {context}
+            # Substitute the context into the {context} placeholder
             formatted_system_prompt = system_prompt.format(context=context_text)
         except KeyError:
-            # Fallback, якщо промпт не містить плейсхолдера
+            # Fallback if the prompt does not contain a placeholder
             formatted_system_prompt = f"{system_prompt}\n\nContext:\n{context_text}"
 
         messages = [
@@ -161,8 +161,8 @@ class OpenAIService:
         self, system_prompt: str, user_message: str, context_chunks: list[str]
     ) -> AsyncGenerator[str]:
         """
-        Streaming-версiя chat completion (SSE).
-        Повертає генератор токенів.
+        Streaming version of chat completion (SSE).
+        Returns a token generator.
         """
         context_text = "\n\n".join(context_chunks)
 

@@ -8,8 +8,8 @@ import structlog
 
 def setup_logging(log_level: str) -> None:
     """
-    Конфiгурацiя structlog процесорiв та формату виводу.
-    Перенаправляє стандартний logging (включаючи uvicorn) у structlog та файл.
+    Configuration of structlog processors and output format.
+    Redirects standard logging (including uvicorn) to structlog and file.
     """
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
 
@@ -39,7 +39,7 @@ def setup_logging(log_level: str) -> None:
         structlog.stdlib.ProcessorFormatter.remove_processors_meta,
         structlog.processors.JSONRenderer(
             ensure_ascii=False
-        ),  # Можна змінити на ConsoleRenderer для читабельності
+        ),  # Can be changed to ConsoleRenderer for readability
     ]
 
     formatter = structlog.stdlib.ProcessorFormatter(
@@ -47,11 +47,11 @@ def setup_logging(log_level: str) -> None:
         processors=formatter_processors,
     )
 
-    # Вивід в консоль (Docker logs)
+    # Console output (Docker logs)
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(formatter)
 
-    # Вивід у файл (app.log на хості)
+    # File output (app.log on the host)
     log_file_path = Path(__file__).resolve().parent.parent / "app.log"
     file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
     file_handler.setFormatter(formatter)
@@ -69,4 +69,5 @@ def setup_logging(log_level: str) -> None:
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:
+    """Returns a structlog bound logger with the given name."""
     return structlog.stdlib.get_logger(name)

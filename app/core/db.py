@@ -17,6 +17,7 @@ engine = create_async_engine(DATABASE_URL, echo=False)
 
 @event.listens_for(engine.sync_engine, "connect")
 def set_sqlite_pragma(dbapi_connection: sqlite3.Connection, connection_record: Any) -> None:
+    """Sets SQLite pragmas for performance and concurrency on connection."""
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA journal_mode=WAL;")
     cursor.execute("PRAGMA busy_timeout=5000;")
@@ -29,13 +30,13 @@ def set_sqlite_pragma(dbapi_connection: sqlite3.Connection, connection_record: A
     retry=retry_if_exception_type(OperationalError),
 )
 async def commit_with_retry(session: Any) -> None:
-    """Виконує session.commit() з ретраями для обходу блокувань SQLite."""
+    """Executes session.commit() with retries to bypass SQLite locks."""
     await session.commit()
 
 
-# TODO: Якщо кількість воркерів (Uvicorn/Gunicorn) буде збільшено > 1,
-# необхідно мігрувати на PostgreSQL або використовувати окремий брокер повідомлень,
-# оскільки SQLite має обмеження для multi-process запису.
+# TODO: If the number of workers (Uvicorn/Gunicorn) is increased > 1,
+# it is necessary to migrate to PostgreSQL or use a separate message broker,
+# because SQLite has limitations for multi-process writing.
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -43,12 +44,13 @@ Base = declarative_base()
 
 
 async def init_db():
-    # Імпортуємо моделі тут, щоб Base.metadata.create_all їх побачив,
-    # уникаючи при цьому circular imports та E402 від Ruff.
+    """Initializes the database and creates all tables."""
+    # Import models here so that Base.metadata.create_all can see them,
+    # while avoiding circular imports and E402 from Ruff.
     from app.models.chat_memory import ChatMessage
     from app.models.lead import Lead
 
-    # Заглушка, щоб Pylance/Ruff не сварилися на "unused import"
+    # Stub so that Pylance/Ruff don't complain about "unused import"
     _ = ChatMessage
     _ = Lead
 

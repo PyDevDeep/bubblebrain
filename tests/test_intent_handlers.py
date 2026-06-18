@@ -8,12 +8,14 @@ from app.services.intent_handlers import ProductCheckoutIntentHandler, SearchInt
 
 @pytest.fixture
 def mock_price_comparator():
+    """Fixture to provide a mocked PriceComparator."""
     comp = AsyncMock()
     return comp
 
 
 @pytest.fixture
 def mock_telegram_service():
+    """Fixture to provide a mocked TelegramService."""
     ts = AsyncMock()
     ts.send_alert.return_value = True
     return ts
@@ -23,6 +25,7 @@ def mock_telegram_service():
 async def test_product_checkout_intent_checkout(
     mock_price_comparator, mock_telegram_service, mock_settings
 ):
+    """Test product checkout intent with checkout requirements."""
     # Arrange
     mock_settings.telegram_contact_url = "http://tg"
     mock_settings.viber_contact_url = "http://viber"
@@ -63,6 +66,7 @@ async def test_product_checkout_intent_checkout(
 async def test_product_checkout_intent_alert(
     mock_price_comparator, mock_telegram_service, mock_settings
 ):
+    """Test product checkout intent that triggers an alert."""
     # Arrange
     mock_settings.telegram_contact_url = "http://tg"
     mock_settings.viber_contact_url = "http://viber"
@@ -102,6 +106,7 @@ async def test_product_checkout_intent_alert(
 
 @pytest.mark.asyncio
 async def test_search_intent_strict_success(mock_price_comparator):
+    """Test search intent where strict search is successful."""
     # Arrange
     handler = SearchIntentHandler(mock_price_comparator)
 
@@ -134,6 +139,7 @@ async def test_search_intent_strict_success(mock_price_comparator):
 
 @pytest.mark.asyncio
 async def test_search_intent_fallback_broad(mock_price_comparator):
+    """Test search intent where strict search fails and broad search succeeds."""
     # Arrange
     handler = SearchIntentHandler(mock_price_comparator)
 
@@ -165,6 +171,7 @@ async def test_search_intent_fallback_broad(mock_price_comparator):
 
 @pytest.mark.asyncio
 async def test_search_intent_nothing_found(mock_price_comparator):
+    """Test search intent where no products are found."""
     # Arrange
     handler = SearchIntentHandler(mock_price_comparator)
 

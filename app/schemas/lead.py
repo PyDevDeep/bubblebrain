@@ -11,7 +11,7 @@ class ContactFormLead(BaseModel):
     surname: str | None = Field(
         default=None, max_length=50, pattern=r"^[A-Za-zА-Яа-яЄєІіЇїҐґ\s\-]+$"
     )
-    phone_number: str = Field(..., max_length=50, description="Телефон")
+    phone_number: str = Field(..., max_length=50, description="Phone")
     contact_method: Literal["telegram", "viber", "phone"]
     lead_type: Literal["contact", "checkout"] = Field(default="contact")
     delivery_address: str | None = Field(default=None, max_length=255)
@@ -21,6 +21,7 @@ class ContactFormLead(BaseModel):
     @field_validator("phone_number", mode="before")
     @classmethod
     def clean_and_validate_phone(cls, v: str) -> str:
+        """Cleans and validates the phone number."""
         v = str(v)
         cleaned = re.sub(r"[^\d+]", "", v)
         if not re.match(r"^(?:\+?38)?0\d{9}$", cleaned):

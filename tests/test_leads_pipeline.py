@@ -15,11 +15,13 @@ from app.services.telegram_service import TelegramService
 
 @pytest.fixture(autouse=True)
 def reset_rate_limit() -> None:
+    """Fixture to reset the rate limiter storage before each test."""
     limiter._storage.reset()  # type: ignore[reportPrivateUsage]
 
 
 # 1. Pydantic schema tests
 def test_clean_and_validate_phone_success() -> None:
+    """Test cleaning and validation of a properly formatted phone number."""
     lead = ContactFormLead(
         name="Test", phone_number="+38 (093) 123-45-67", contact_method="telegram"
     )
@@ -27,17 +29,20 @@ def test_clean_and_validate_phone_success() -> None:
 
 
 def test_clean_and_validate_phone_no_country_code() -> None:
+    """Test cleaning and validation of a phone number missing the country code."""
     lead = ContactFormLead(name="Test", phone_number="093 123 45 67", contact_method="telegram")
     assert lead.phone_number == "0931234567"
 
 
 def test_clean_and_validate_phone_too_short() -> None:
+    """Test that a phone number which is too short raises a ValidationError."""
     with pytest.raises(ValidationError) as exc:
         ContactFormLead(name="Test", phone_number="093 123", contact_method="telegram")
     assert "Некоректний формат телефону" in str(exc.value)
 
 
 def test_clean_and_validate_phone_integer() -> None:
+    """Test that an integer phone number is properly converted to string and validated."""
     lead = ContactFormLead(
         name="Test",
         phone_number=380931234567,  # type: ignore
@@ -49,6 +54,7 @@ def test_clean_and_validate_phone_integer() -> None:
 # 2. TelegramService tests
 @pytest.mark.asyncio
 async def test_telegram_service_success() -> None:
+    """Test successful sending of an alert via TelegramService."""
     service = TelegramService(
         MagicMock(telegram_bot_token="test", telegram_chat_id="test", tg_leads_chat_id="test")
     )
@@ -65,6 +71,7 @@ async def test_telegram_service_success() -> None:
 
 @pytest.mark.asyncio
 async def test_telegram_service_http_error() -> None:
+    """Test handling of an HTTP error while sending an alert via TelegramService."""
     service = TelegramService(
         MagicMock(telegram_bot_token="test", telegram_chat_id="test", tg_leads_chat_id="test")
     )
@@ -82,6 +89,7 @@ async def test_telegram_service_http_error() -> None:
 
 @pytest.mark.asyncio
 async def test_telegram_service_network_error() -> None:
+    """Test handling of a network error while sending an alert via TelegramService."""
     service = TelegramService(
         MagicMock(telegram_bot_token="test", telegram_chat_id="test", tg_leads_chat_id="test")
     )
@@ -97,6 +105,7 @@ async def test_telegram_service_network_error() -> None:
 # 3. Tenacity tests
 @pytest.mark.asyncio
 async def test_send_telegram_notification_retry_limit() -> None:
+    """Test that the Telegram notification stops retrying after reaching the limit."""
     with patch(
         "app.services.telegram_service.TelegramService.send_alert", new_callable=AsyncMock
     ) as mock_send_alert:
@@ -115,6 +124,7 @@ client = TestClient(app)
 
 
 def test_api_create_lead_honeypot() -> None:
+    """Test creating a lead with honeypot data returns a fake success response."""
     response = client.post(
         "/api/v1/leads",
         json={
@@ -133,6 +143,7 @@ def test_api_create_lead_honeypot() -> None:
 @patch("app.api.v1.endpoints.leads.AsyncSessionLocal")
 @patch("app.api.v1.endpoints.leads.BackgroundTasks.add_task")
 def test_api_create_lead_success(mock_add_task: MagicMock, mock_session_local: MagicMock) -> None:
+    """Test successful creation of a lead via the API."""
     # Set up the async context manager mock
     mock_session = AsyncMock()
 
@@ -164,6 +175,7 @@ def test_api_create_lead_success(mock_add_task: MagicMock, mock_session_local: M
 
 
 def test_api_create_lead_payload_too_large_header() -> None:
+    """Test creating a lead with a content-length header exceeding the maximum allowed."""
     response = client.post(
         "/api/v1/leads",
         headers={"content-length": "3000", "X-Forwarded-For": "10.0.0.2"},
@@ -174,6 +186,7 @@ def test_api_create_lead_payload_too_large_header() -> None:
 
 
 def test_api_create_lead_payload_too_large_stream() -> None:
+    """Test creating a lead with a payload stream exceeding the maximum allowed."""
     # Send a payload larger than 2048 bytes
     large_payload = {
         "name": "A" * 3000,
@@ -188,6 +201,7 @@ def test_api_create_lead_payload_too_large_stream() -> None:
 
 
 def test_api_create_lead_invalid_json() -> None:
+    """Test creating a lead with invalid JSON data returns 422."""
     response = client.post(
         "/api/v1/leads",
         json={"wrong_field": "data"},  # missing name, phone, etc.
@@ -203,6 +217,7 @@ def test_api_create_lead_invalid_json() -> None:
 async def test_process_lead_background_success(
     mock_send_tg: AsyncMock, mock_session_local: MagicMock
 ) -> None:
+    """Test processing a lead in the background successfully."""
     from app.api.v1.endpoints.leads import process_lead_background
     from app.models.lead import Lead
 
@@ -239,6 +254,7 @@ async def test_process_lead_background_success(
 async def test_process_lead_background_retry_error(
     mock_sentry: MagicMock, mock_send_tg: AsyncMock, mock_session_local: MagicMock
 ) -> None:
+    """Test background lead processing handles RetryError and logs to Sentry."""
     from tenacity import RetryError
 
     from app.api.v1.endpoints.leads import process_lead_background
@@ -263,6 +279,7 @@ async def test_process_lead_background_retry_error(
 
 
 def test_api_create_lead_rate_limiting() -> None:
+    """Test that the API correctly rate limits lead creation requests."""
     # Use a unique IP header to ensure rate limit buckets are fresh for this test
     headers = {"X-Forwarded-For": "10.0.0.5"}
 

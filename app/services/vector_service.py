@@ -16,8 +16,8 @@ logger = get_logger(__name__)
 class VectorService:
     def __init__(self, settings: Settings) -> None:
         """
-        Iнiцiалiзацiя Pinecone клiєнта та отримання посилання на iндекс.
-        Автоматично перевіряє наявність індексу.
+        Initialize Pinecone client and get reference to index.
+        Automatically checks for index existence.
         """
         self.settings = settings
         self.pc = Pinecone(api_key=settings.pinecone_api_key.get_secret_value())
@@ -28,11 +28,12 @@ class VectorService:
         self.index: Any = self.pc.Index(self.index_name)  # type: ignore[reportUnknownMemberType]
 
     async def initialize(self) -> None:
+        """Initialize the vector service by ensuring the index exists."""
         await asyncio.to_thread(self.ensure_index_exists)
 
     def ensure_index_exists(self) -> None:
         """
-        Перевiряє наявнiсть iндексу. Створює при вiдсутностi.
+        Checks index existence. Creates if not exists.
         """
         try:
             active_indexes = [idx.name for idx in self.pc.list_indexes()]
@@ -57,7 +58,7 @@ class VectorService:
 
     async def upsert_vectors(self, vectors: list[tuple[str, list[float], dict[str, Any]]]) -> int:
         """
-        Запис векторiв у Pinecone батчами по 100 для уникнення rate limit.
+        Write vectors to Pinecone in batches of 100 to avoid rate limit.
         """
         batch_size = 100
         total_upserted = 0
@@ -90,7 +91,7 @@ class VectorService:
         self, query_vector: list[float], top_k: int, score_threshold: float
     ) -> list[dict[str, Any]]:
         """
-        Пошук найбiльш схожих векторiв. Відсіювання результатів нижче score_threshold.
+        Search for the most similar vectors. Filter out results below score_threshold.
         """
         try:
             response = self.index.query(
@@ -120,7 +121,7 @@ class VectorService:
 
     def delete_by_source(self, source: str) -> None:
         """
-        Видалення всiх векторiв за metadata filter: source == source.
+        Delete all vectors by metadata filter: source == source.
         """
         try:
             self.index.delete(filter={"source": source})

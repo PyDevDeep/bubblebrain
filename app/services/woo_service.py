@@ -13,13 +13,15 @@ logger = get_logger(__name__)
 
 class WooService:
     def __init__(self, settings: Settings) -> None:
+        """Initialize WooService with settings."""
         self.woo_ck = settings.woo_ck
         self.woo_cs = settings.woo_cs
         self.base_url = f"{settings.woo_url.rstrip('/')}/wp-json/wc/v3/products"
-        # Збільшено таймаут через повільний пошук WooCommerce
+        # Increased timeout due to slow WooCommerce search
         self.timeout = httpx.Timeout(15.0, connect=3.0)
 
     def _parse_product_list(self, data: list[dict[str, Any]]) -> list[WooProduct]:
+        """Parse a list of raw WooCommerce products into a list of WooProduct."""
         products: list[WooProduct] = []
         for raw_item in data:
             parsed = parse_product(raw_item)
@@ -40,6 +42,7 @@ class WooService:
     async def _fetch_and_parse_single(
         self, client: httpx.AsyncClient, params: dict[str, str | int]
     ) -> WooProduct | None:
+        """Fetch and parse a single product from WooCommerce."""
         resp = await client.get(self.base_url, params=params)
         if resp.status_code == 200:
             data = resp.json()
@@ -60,7 +63,7 @@ class WooService:
     async def search_product_async(
         self, search_term: str, category_id: int | None = None
     ) -> WooProduct | None:
-        """Асинхронний пошук товару у WooCommerce за назвою або SKU."""
+        """Asynchronous product search in WooCommerce by name or SKU."""
         params: dict[str, str | int] = {
             "search": search_term,
             "consumer_key": self.woo_ck,
@@ -95,7 +98,7 @@ class WooService:
     async def search_products_async(
         self, search_term: str, category_id: int | None = None, limit: int = 5
     ) -> list[WooProduct]:
-        """Асинхронний пошук кількох товарів у WooCommerce за назвою."""
+        """Asynchronous search for multiple products in WooCommerce by name."""
         params: dict[str, str | int] = {
             "search": search_term,
             "consumer_key": self.woo_ck,
@@ -133,7 +136,7 @@ class WooService:
     async def search_products_by_category_async(
         self, category_id: int, limit: int = 5
     ) -> list[WooProduct]:
-        """Асинхронний пошук кількох товарів у WooCommerce за ID категорії."""
+        """Asynchronous search for multiple products in WooCommerce by category ID."""
         params: dict[str, str | int] = {
             "category": category_id,
             "consumer_key": self.woo_ck,
@@ -167,7 +170,7 @@ class WooService:
         return products
 
     async def get_daily_orders_stats(self) -> dict[str, Any]:
-        """Отримує статистику замовлень за останні 24 години."""
+        """Gets order statistics for the last 24 hours."""
         from datetime import UTC, datetime, timedelta
         from typing import Any, cast
 
@@ -207,7 +210,7 @@ class WooService:
                                 completed += 1
                                 paid += 1
 
-                            # Парсинг міток з meta_data (наприклад, utm_source)
+                            # Parsing tags from meta_data (e.g., utm_source)
                             meta_data_raw = order.get("meta_data", [])
                             if isinstance(meta_data_raw, list):
                                 meta_data = cast(list[dict[str, Any]], meta_data_raw)

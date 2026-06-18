@@ -15,6 +15,7 @@ from app.core.config import get_settings
 
 
 async def main():
+    """Main entry point to fetch WooCommerce products and perform analysis."""
     settings = get_settings()
     url = f"{settings.woo_url.rstrip('/')}/wp-json/wc/v3/products"
 
@@ -57,7 +58,7 @@ async def main():
             if sku:
                 skus.append((sku, name, "sku"))
 
-            # Also check attributes for "партномер" or similar
+            # Also check attributes for "part number" or similar
             attributes: list[dict[str, Any]] = p.get("attributes", [])
             for attr in attributes:
                 attr_name = str(attr.get("name", "")).lower()

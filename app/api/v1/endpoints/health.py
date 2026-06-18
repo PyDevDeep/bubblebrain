@@ -11,35 +11,35 @@ health_router = APIRouter()
 
 @health_router.get("/health", status_code=status.HTTP_200_OK)
 async def health_check() -> dict[str, str]:
-    """Базова перевiрка працездатностi сервiсу (Liveness probe)."""
+    """Basic service health check (Liveness probe)."""
     return {"status": "healthy"}
 
 
 @health_router.get("/ready", status_code=status.HTTP_200_OK)
 async def readiness_check() -> dict[str, str]:
-    """Перевiрка доступностi залежностей: Pinecone та OpenAI (Readiness probe)."""
+    """Check availability of dependencies: Pinecone and OpenAI (Readiness probe)."""
     settings = get_settings()
     components_status = {"status": "ready", "pinecone": "ok", "openai": "ok"}
     errors: list[str] = []
 
-    # Перевірка OpenAI
+    # Check OpenAI
     try:
         openai_client = AsyncOpenAI(
             api_key=settings.openai_api_key.get_secret_value(),
             timeout=5.0,
             max_retries=0,
         )
-        # Виклик лістингу моделей як lightweight перевірки
+        # Call model listing as lightweight check
         await openai_client.models.list()
     except Exception as e:
         logger.warning("OpenAI readiness check failed", error=str(e))
         components_status["openai"] = "failed"
         errors.append(f"OpenAI: {e!s}")
 
-    # Перевірка Pinecone
+    # Check Pinecone
     try:
         pinecone_client = Pinecone(api_key=settings.pinecone_api_key.get_secret_value())
-        # Перевірка доступу до сервісу (лістинг індексів)
+        # Check service access (listing indices)
         pinecone_client.list_indexes()
     except Exception as e:
         logger.warning("Pinecone readiness check failed", error=str(e))

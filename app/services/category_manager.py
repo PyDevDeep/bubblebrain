@@ -16,10 +16,11 @@ class CategoryManager:
         self._last_mtime: float = 0.0
 
     async def initialize(self) -> None:
+        """Initializes the category manager by loading categories."""
         await self._load_categories()
 
     async def _load_categories(self) -> None:
-        """Перевіряє дату зміни файлу і безпечно оновлює кеш."""
+        """Checks the file modification date and safely updates the cache."""
         if not await asyncio.to_thread(os.path.exists, self.csv_path):
             logger.warning("Category CSV not found", path=self.csv_path)
             return
@@ -27,7 +28,7 @@ class CategoryManager:
         try:
             mtime = await asyncio.to_thread(os.path.getmtime, self.csv_path)
             if mtime <= self._last_mtime:
-                return  # Файл не змінювався
+                return  # File hasn't changed
 
             new_map: dict[str, int] = {}
             new_list: list[str] = []
@@ -43,7 +44,7 @@ class CategoryManager:
 
             rows: list[dict[str, Any]] = await asyncio.to_thread(_read_csv)
             for row in rows:
-                # Очікувані колонки: ID, Name, Slug, Parent ID, Count
+                # Expected columns: ID, Name, Slug, Parent ID, Count
                 try:
                     count = int(row.get("Count", 0))
                     if count > 0:
@@ -54,7 +55,7 @@ class CategoryManager:
                 except (ValueError, KeyError):
                     continue
 
-            # Оновлюємо стан тільки якщо парсинг пройшов успішно і є дані
+            # Update state only if parsing was successful and there is data
             if new_map:
                 self._categories_map = new_map
                 self._categories_list_str = ", ".join(new_list)
@@ -67,16 +68,16 @@ class CategoryManager:
             logger.error(
                 "Failed to load categories, keeping old cache", path=self.csv_path, error=str(e)
             )
-            # Не обнуляємо старий кеш, просто логуємо помилку (запобігання Race Condition)
+            # Do not clear the old cache, just log the error (prevent Race Condition)
 
     async def get_categories_string(self) -> str:
-        """Повертає рядок категорій для ін'єкції в промпт LLM."""
-        await self._load_categories()  # Hot reload перевірка
+        """Returns a string of categories for injection into the LLM prompt."""
+        await self._load_categories()  # Hot reload check
         return self._categories_list_str
 
     async def get_category_id(self, name: str) -> int | None:
-        """Повертає ID категорії за назвою (case-insensitive)."""
-        await self._load_categories()  # Hot reload перевірка
+        """Returns the category ID by name (case-insensitive)."""
+        await self._load_categories()  # Hot reload check
         if not name:
             return None
         return self._categories_map.get(name.strip().lower())

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 async def fetch_prometheus_data() -> dict[str, float]:
-    """Збирає агреговані метрики за останні 24 години з локального Prometheus."""
+    """Collects aggregated metrics for the last 24 hours from local Prometheus."""
     metrics = {
         "tokens": 0.0,
         "latency_avg": 0.0,
@@ -26,7 +26,7 @@ async def fetch_prometheus_data() -> dict[str, float]:
         "conversions": 0.0,
     }
 
-    # Prometheus HTTP API URL (в межах docker мережі)
+    # Prometheus HTTP API URL (within docker network)
     prom_url = "http://prometheus:9090/api/v1/query"
 
     queries = {
@@ -57,7 +57,7 @@ async def fetch_prometheus_data() -> dict[str, float]:
 
 
 async def fetch_unique_users_24h() -> int:
-    """Кількість унікальних користувачів (сесій) за 24 год."""
+    """Number of unique users (sessions) in the last 24 hours."""
     past_24h = datetime.now(UTC) - timedelta(hours=24)
     async with AsyncSessionLocal() as session:
         try:
@@ -73,7 +73,7 @@ async def fetch_unique_users_24h() -> int:
 
 
 async def gather_and_send_daily_report_job() -> None:
-    """Функція для APScheduler, що агрегує дані та надсилає їх у Telegram."""
+    """Function for APScheduler that aggregates data and sends it to Telegram."""
     from app.core.config import get_settings
 
     settings = get_settings()
@@ -84,13 +84,13 @@ async def gather_and_send_daily_report_job() -> None:
     # 1. Prometheus Metrics
     prom_stats = await fetch_prometheus_data()
 
-    # 2. SQLite (Унікальні користувачі)
+    # 2. SQLite (Unique users)
     unique_users = await fetch_unique_users_24h()
 
     # 3. WooCommerce
     woo_stats: dict[str, Any] = await woo_service.get_daily_orders_stats()
 
-    # Формування повідомлення
+    # Message formatting
     date_str = datetime.now(UTC).strftime("%d.%m.%Y")
 
     msg_lines = [
@@ -112,7 +112,7 @@ async def gather_and_send_daily_report_job() -> None:
         for line in STATISTICS_TEMPLATE
     ]
 
-    # Мітки
+    # Tags
     tags = woo_stats.get("tags", {})
     if tags:
         msg_lines.append("")
@@ -124,6 +124,6 @@ async def gather_and_send_daily_report_job() -> None:
 
     message = "\n".join(msg_lines)
 
-    # Відправка у топік 'stat'
+    # Send to 'stat' topic
     await telegram_service.send_alert(message, alert_type="stat")
     logger.info("Daily statistics report sent.")

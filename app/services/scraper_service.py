@@ -14,6 +14,8 @@ logger = get_logger(__name__)
 
 
 class ScraperService:
+    """Service for scraping products from supplier websites and hotline."""
+
     def __init__(self, settings: Settings) -> None:
         self.euro_rate = settings.euro_rate
         self.supplier_url = settings.supplier_url
@@ -23,7 +25,7 @@ class ScraperService:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "uk,ru;q=0.9,en-US;q=0.8,en;q=0.7",
         }
-        # Жорсткий таймаут для парсингу
+        # Hard timeout for parsing
         self.timeout = httpx.Timeout(SCRAPER_TIMEOUT_DEFAULT, connect=SCRAPER_TIMEOUT_CONNECT)
 
     async def _fetch_html(self, url: str) -> httpx.Response | None:

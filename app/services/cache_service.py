@@ -16,7 +16,7 @@ class CacheService:
         self.ttl_days = settings.cache_ttl_days
 
     async def initialize(self) -> None:
-        """Створення таблиці кешу. Якщо файл пошкоджено, він буде перестворений."""
+        """Creation of the cache table. If the file is corrupted, it will be recreated."""
         query = """
         CREATE TABLE IF NOT EXISTS product_cache (
             sku TEXT PRIMARY KEY,
@@ -35,10 +35,10 @@ class CacheService:
                 logger.info("SQLite cache initialized", db_path=self.db_path)
         except sqlite3.Error as e:
             logger.error("Failed to initialize SQLite cache", error=str(e))
-            # Не кидаємо exception, дозволяємо додатку працювати без кешу
+            # Do not throw an exception, allow the application to work without cache
 
     async def get(self, sku: str) -> CacheEntry | None:
-        """Читання запису з кешу. Перевірка is_expired робиться на рівні виклику."""
+        """Reading a record from the cache. The is_expired check is done at the call level."""
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 db.row_factory = aiosqlite.Row
@@ -60,7 +60,7 @@ class CacheService:
                         updated_at=datetime.fromisoformat(row["updated_at"]),
                     )
         except sqlite3.Error as e:
-            # --- ДОДАНО FAILSAFE ---
+            # --- ADDED FAILSAFE ---
             if "no such table" in str(e):
                 logger.warning("Cache table missing during GET. Initializing...", sku=sku)
                 await self.initialize()
@@ -70,7 +70,7 @@ class CacheService:
             return None
 
     async def set(self, entry: CacheEntry) -> None:
-        """Збереження або перезапис даних для SKU."""
+        """Saving or overwriting data for SKU."""
         query = """
         INSERT OR REPLACE INTO product_cache
         (sku, product_name, price_eur, price_uah, availability_status, delivery_time_description, updated_at)
@@ -94,19 +94,19 @@ class CacheService:
                 )
                 await db.commit()
         except sqlite3.Error as e:
-            # --- ДОДАНО FAILSAFE ТА РЕТРАЙ ---
+            # --- ADDED FAILSAFE AND RETRY ---
             if "no such table" in str(e):
                 logger.warning(
                     "Cache table missing during SET. Initializing and retrying...", sku=entry.sku
                 )
                 await self.initialize()
-                await self.set(entry)  # Повторюємо спробу збереження
+                await self.set(entry)  # Retry saving
             else:
                 logger.error("SQLite SET error", error=str(e), sku=entry.sku)
             # ---------------------------------
 
     async def invalidate(self, sku: str) -> None:
-        """Примусове видалення запису (наприклад, при аномаліях ціни)."""
+        """Forced deletion of a record (e.g., in case of price anomalies)."""
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute("DELETE FROM product_cache WHERE sku = ?", (sku,))
@@ -115,7 +115,7 @@ class CacheService:
             logger.error("SQLite INVALIDATE error", error=str(e), sku=sku)
 
     async def purge_expired(self) -> int:
-        """Видалення старих записів. Викликається при старті додатку."""
+        """Deleting old records. Called when the application starts."""
         cutoff_date = datetime.now(UTC) - timedelta(days=self.ttl_days)
         cutoff_iso = cutoff_date.isoformat()
 

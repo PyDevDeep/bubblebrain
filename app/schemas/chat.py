@@ -13,12 +13,13 @@ class ChatRequest(BaseModel):
 
 
 class LeadData(BaseModel):
-    name: str | None = Field(default=None, description="Ім'я клієнта")
-    phone: str = Field(..., description="Контактний номер телефону (Viber/Telegram)")
+    name: str | None = Field(default=None, description="Client name")
+    phone: str = Field(..., description="Contact phone number (Viber/Telegram)")
 
     @field_validator("phone")
     @classmethod
     def validate_phone(cls, v: str) -> str:
+        """Validates and cleans the phone number."""
         cleaned = re.sub(r"[\s\-\(\)]", "", v)
         if not re.match(r"^(?:\+380|380|0)\d{9}$", cleaned):
             raise ValueError(ERR_INVALID_PHONE)
@@ -34,12 +35,12 @@ class RAGResponse(BaseModel):
     answer: str
     sources: list[str]
     has_context: bool
-    links: list[LinkItem] = Field(default=[], description="Відокремлені посилання для фронтенду")
+    links: list[LinkItem] = Field(default=[], description="Extracted links for frontend")
     requires_lead: bool = Field(
-        default=False, description="Прапорець для активації форми збору контактів на фронтенді"
+        default=False, description="Flag to activate contact form on frontend"
     )
     lead_form_type: Literal["contact", "checkout"] | None = Field(
-        default=None, description="Тип форми для відображення на фронтенді"
+        default=None, description="Type of form to display on frontend"
     )
 
 

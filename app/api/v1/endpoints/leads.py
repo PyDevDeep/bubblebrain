@@ -46,6 +46,7 @@ async def send_telegram_notification(
     reply_markup: dict[str, Any] | None = None,
     session_id: str | None = None,
 ) -> None:
+    """Send notification to Telegram with retry mechanism."""
     settings = get_settings()
     telegram_service = TelegramService(settings)
     await telegram_service.send_alert(
@@ -56,6 +57,7 @@ async def send_telegram_notification(
 async def process_lead_background(
     lead_id: int, message: str, alert_type: str = "lead", session_id: str | None = None
 ) -> None:
+    """Process lead in background and send Telegram notification."""
     reply_markup = {
         "inline_keyboard": [
             [
@@ -100,13 +102,13 @@ async def process_lead_background(
                 lead_id, message, alert_type, reply_markup=reply_markup, session_id=session_id
             )
 
-            # Оновлюємо статус на sent
+            # Update status to sent
             lead = await session.get(Lead, lead_id)
             if lead:
                 lead.notification_status = "sent"  # type: ignore
                 await commit_with_retry(session)
         except RetryError:
-            # Якщо всі спроби вичерпано
+            # If all attempts are exhausted
             sentry_sdk.capture_message(f"Telegram API failed for lead_id={lead_id}", level="error")
             lead = await session.get(Lead, lead_id)
             if lead:
@@ -125,6 +127,7 @@ async def process_lead_background(
 @leads_router.post("", status_code=status.HTTP_201_CREATED)
 @limiter.limit("3/minute")  # type: ignore
 async def create_lead(request: Request, background_tasks: BackgroundTasks) -> dict[str, str]:
+    """Create a new lead from contact form or checkout."""
     content_length = request.headers.get("content-length")
     if content_length and int(content_length) > MAX_PAYLOAD_SIZE:
         raise HTTPException(
@@ -147,11 +150,11 @@ async def create_lead(request: Request, background_tasks: BackgroundTasks) -> di
             detail="Invalid JSON format or validation error",
         ) from None
 
-    # Honeypot перевірка
+    # Honeypot check
     if lead_data.honeypot:
         return {"status": "success", "message": "Lead received"}
 
-    # Асинхронний запис у БД
+    # Asynchronous write to DB
     async with AsyncSessionLocal() as session:
         db_lead = Lead(
             name=lead_data.name,

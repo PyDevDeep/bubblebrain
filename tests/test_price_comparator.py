@@ -9,21 +9,25 @@ from app.services.price_comparator import PriceComparator
 
 @pytest.fixture
 def woo_service_mock() -> AsyncMock:
+    """Fixture to provide a mocked WooCommerce service."""
     return AsyncMock()
 
 
 @pytest.fixture
 def scraper_service_mock() -> AsyncMock:
+    """Fixture to provide a mocked Scraper service."""
     return AsyncMock()
 
 
 @pytest.fixture
 def cache_service_mock() -> AsyncMock:
+    """Fixture to provide a mocked Cache service."""
     return AsyncMock()
 
 
 @pytest.fixture
 def settings_mock() -> MagicMock:
+    """Fixture to provide mocked settings."""
     mock = MagicMock()
     mock.margin_threshold = 200.0
     return mock
@@ -36,6 +40,7 @@ def price_comparator(
     cache_service_mock: AsyncMock,
     settings_mock: MagicMock,
 ) -> PriceComparator:
+    """Fixture to provide a configured PriceComparator instance."""
     return PriceComparator(
         woo_service=woo_service_mock,
         scraper_service=scraper_service_mock,
@@ -44,7 +49,7 @@ def price_comparator(
     )
 
 
-# --- 1. Тестування мапінгу статусів наявності (map_availability) ---
+# --- 1. Testing availability status mapping (map_availability) ---
 
 
 @pytest.mark.parametrize(
@@ -61,10 +66,11 @@ def price_comparator(
     ],
 )
 def test_map_availability(price_comparator: PriceComparator, dc_status: Any, expected: str) -> None:
+    """Test mapping of availability statuses."""
     assert price_comparator.map_availability(dc_status) == expected
 
 
-# --- 2. Тестування процесу порівняння цін (compare) ---
+# --- 2. Testing price comparison process (compare) ---
 
 
 @pytest.mark.asyncio
@@ -74,7 +80,7 @@ async def test_compare_woo_not_found(
     scraper_service_mock: AsyncMock,
     cache_service_mock: AsyncMock,
 ) -> None:
-    """Сценарій 2.1: Товар не знайдено на нашому сайті (WooCommerce)"""
+    """Scenario 2.1: Product not found on our site (WooCommerce)."""
     woo_service_mock.search_product_async.return_value = None
 
     result = await price_comparator.compare("Unknown Product")
@@ -95,7 +101,7 @@ async def test_compare_woo_found_no_sku(
     scraper_service_mock: AsyncMock,
     cache_service_mock: AsyncMock,
 ) -> None:
-    """Сценарій 2.2: Товар знайдено на Woo, але без SKU"""
+    """Scenario 2.2: Product found on Woo, but without SKU."""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = ""
     woo_mock_result.name = "Test Product"
@@ -122,7 +128,7 @@ async def test_compare_cache_hit(
     scraper_service_mock: AsyncMock,
     cache_service_mock: AsyncMock,
 ) -> None:
-    """Сценарій 2.3: Кеш-хіт (Cache Hit) для звичайного пошуку"""
+    """Scenario 2.3: Cache hit for normal search."""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
     woo_mock_result.name = "Test Product"
@@ -153,7 +159,7 @@ async def test_compare_checkout_forces_scrape(
     scraper_service_mock: AsyncMock,
     cache_service_mock: AsyncMock,
 ) -> None:
-    """Сценарій 2.4: Пробивання кешу при оформленні замовлення (Checkout)"""
+    """Scenario 2.4: Cache invalidation during checkout."""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
     woo_mock_result.name = "Test Product"
@@ -192,7 +198,7 @@ async def test_compare_margin_ok(
     scraper_service_mock: AsyncMock,
     cache_service_mock: AsyncMock,
 ) -> None:
-    """Сценарій 2.5: Перевірка маржі — маржа в нормі"""
+    """Scenario 2.5: Margin check - margin is normal."""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
     woo_mock_result.name = "Test Product"
@@ -225,7 +231,7 @@ async def test_compare_low_margin(
     scraper_service_mock: AsyncMock,
     cache_service_mock: AsyncMock,
 ) -> None:
-    """Сценарій 2.6: Перевірка маржі — низька маржа (Low Margin)"""
+    """Scenario 2.6: Margin check - low margin."""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
     woo_mock_result.name = "Test Product"
@@ -260,7 +266,7 @@ async def test_compare_checkout_margin_issue(
     scraper_service_mock: AsyncMock,
     cache_service_mock: AsyncMock,
 ) -> None:
-    """Сценарій 2.7: Перевірка маржі під час Checkout — проблема з маржею"""
+    """Scenario 2.7: Margin check during checkout - margin issue."""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
     woo_mock_result.name = "Test Product"
@@ -294,7 +300,7 @@ async def test_compare_scraper_failed(
     scraper_service_mock: AsyncMock,
     cache_service_mock: AsyncMock,
 ) -> None:
-    """Сценарій 2.8: Помилка скрапера (Scraper Failed)"""
+    """Scenario 2.8: Scraper failed."""
     woo_mock_result = MagicMock()
     woo_mock_result.sku = "123"
     woo_mock_result.name = "Test Product"

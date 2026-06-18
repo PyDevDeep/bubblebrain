@@ -34,10 +34,11 @@ class WooOrderPayload(BaseModel):
 
 
 async def process_woo_order_background(payload: WooOrderPayload) -> None:
+    """Process WooCommerce order in background."""
     settings = get_settings()
     telegram_service = TelegramService(settings)
 
-    # Створюємо або оновлюємо ліда в базі даних
+    # Create or update lead in the database
     async with AsyncSessionLocal() as session:
         try:
             db_lead = Lead(
@@ -48,14 +49,14 @@ async def process_woo_order_background(payload: WooOrderPayload) -> None:
                 lead_type="checkout",
                 session_id=payload.session_id,
                 woo_order_id=str(payload.order_id),
-                status="success",  # Відразу успіх, бо це факт продажу
+                status="success",  # Immediate success because it's a sale
                 notification_status="pending",
             )
             session.add(db_lead)
             await commit_with_retry(session)
             leads_created_total.labels(type="conversion", status="success").inc()
 
-            # Формуємо повідомлення
+            # Form message
             items_lines: list[str] = []
             for item in payload.items:
                 sku_info = f" (Арт: {item.sku})" if item.sku else ""
@@ -88,5 +89,6 @@ async def process_woo_order_background(payload: WooOrderPayload) -> None:
 async def woo_order_webhook(
     payload: WooOrderPayload, background_tasks: BackgroundTasks
 ) -> dict[str, str]:
+    """Handle WooCommerce order webhook."""
     background_tasks.add_task(process_woo_order_background, payload)
     return {"status": "success", "message": "Webhook received"}

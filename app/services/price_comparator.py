@@ -13,6 +13,8 @@ logger = get_logger(__name__)
 
 
 class PriceComparator:
+    """Comparator for checking product prices against supplier prices."""
+
     def __init__(
         self,
         woo_service: WooService,
@@ -26,6 +28,7 @@ class PriceComparator:
         self.margin_threshold = settings.margin_threshold
 
     def map_availability(self, supp_status: str) -> str:
+        """Map supplier availability status to standard text."""
         s = supp_status.lower() if supp_status else ""
         if "skladom" in s or "ihneď k odberu" in s or "po objednaní" in s:
             return "В наявності (доставка 3-5 днів)"
@@ -38,6 +41,7 @@ class PriceComparator:
     async def compare(
         self, product_name: str, is_checkout: bool = False, category_id: int | None = None
     ) -> PriceComparisonResult:
+        """Compare WooCommerce product price with supplier."""
         logger.info(
             "Starting price comparison",
             product=product_name,
@@ -83,7 +87,7 @@ class PriceComparator:
         supp_url = None
 
         cache_entry = await self.cache_service.get(sku)
-        # ПРОБИВАЄМО КЕШ, ЯКЩО ЦЕ CHECKOUT
+        # BYPASS CACHE IF IT IS CHECKOUT
         if (
             not is_checkout
             and cache_entry

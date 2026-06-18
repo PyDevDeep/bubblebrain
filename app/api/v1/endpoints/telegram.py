@@ -16,6 +16,7 @@ telegram_router = APIRouter()
 
 
 async def answer_callback_query(callback_query_id: str, token: str, text: str = "") -> None:
+    """Answer a Telegram callback query."""
     url = f"https://api.telegram.org/bot{token}/answerCallbackQuery"
     payload = {"callback_query_id": callback_query_id, "text": text}
     async with httpx.AsyncClient() as client:
@@ -26,6 +27,7 @@ async def answer_callback_query(callback_query_id: str, token: str, text: str = 
 
 
 async def process_telegram_update(update: dict[str, Any]) -> None:
+    """Process incoming Telegram update."""
     if "callback_query" not in update:
         return
 
@@ -59,20 +61,20 @@ async def process_telegram_update(update: dict[str, Any]) -> None:
             }
             status_text = status_map.get(new_status, new_status)
 
-            # Оновлюємо БД
+            # Update DB
             async with AsyncSessionLocal() as session:
                 lead = await session.get(Lead, lead_id)
                 if lead:
                     lead.status = new_status  # type: ignore
                     await commit_with_retry(session)
 
-            # Змінюємо повідомлення (прибираємо кнопки, додаємо статус в кінець тексту)
+            # Update message (remove buttons, add status to end of text)
             if original_text and message_id and chat_id:
-                # Оскільки Telegram повертає text без HTML тегів, краще просто додати рядок в кінець.
-                # Але якщо ми втратимо форматування, це може бути проблемою.
-                # Найпростіший спосіб: залишити повідомлення, але оновити ReplyMarkup на одну кнопку "Статус: ..." або прибрати кнопки.
+                # Since Telegram returns text without HTML tags, it's better to just append the string to the end.
+                # But if we lose formatting, it could be a problem.
+                # Simplest way: leave the message, but update ReplyMarkup to a single "Status: ..." button or remove buttons.
 
-                # Залишимо кнопку яка не клікається або оновимо текст
+                # Leave unclickable button or update text
                 new_markup = {
                     "inline_keyboard": [
                         [
@@ -90,6 +92,7 @@ async def process_telegram_update(update: dict[str, Any]) -> None:
 
 @telegram_router.post("/webhook", status_code=status.HTTP_200_OK)
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks) -> dict[str, str]:
+    """Handle Telegram webhook."""
     try:
         update = await request.json()
         background_tasks.add_task(process_telegram_update, update)

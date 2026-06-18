@@ -10,6 +10,7 @@ from app.services.rag_engine import RAGEngine
 
 @pytest.fixture
 def mock_rag_engine():
+    """Fixture to provide a mocked RAGEngine."""
     settings = Mock(spec=Settings)
     settings.top_k_results = 3
     settings.similarity_threshold = 0.7
@@ -37,6 +38,7 @@ def mock_rag_engine():
 
 @pytest.mark.asyncio
 async def test_detect_intent_valid_json(mock_rag_engine):
+    """Test intent detection with a valid JSON response from LLM."""
     # Arrange
     mock_rag_engine.category_manager.get_categories_string.return_value = "cat1, cat2"
     mock_rag_engine.openai_service.get_chat_completion.return_value = (
@@ -52,6 +54,7 @@ async def test_detect_intent_valid_json(mock_rag_engine):
 
 @pytest.mark.asyncio
 async def test_process_query_guardrail_failed(mock_rag_engine):
+    """Test query processing when the guardrail check fails."""
     # Arrange
     mock_rag_engine.guardrails_service.validate_input.return_value = False
 
@@ -66,6 +69,7 @@ async def test_process_query_guardrail_failed(mock_rag_engine):
 
 @pytest.mark.asyncio
 async def test_process_query_success(mock_rag_engine):
+    """Test successful query processing through the RAG engine."""
     # Arrange
     mock_rag_engine.guardrails_service.validate_input.return_value = True
     mock_rag_engine.chat_memory_service.get_history.return_value = []
@@ -95,6 +99,7 @@ async def test_process_query_success(mock_rag_engine):
 
 @pytest.mark.asyncio
 async def test_detect_intent_fast_path_sku(mock_rag_engine):
+    """Test intent detection fast path using an SKU."""
     from app.services.rag_engine import INTENT_SEARCH
 
     # Act
@@ -110,6 +115,7 @@ async def test_detect_intent_fast_path_sku(mock_rag_engine):
 
 @pytest.mark.asyncio
 async def test_detect_intent_fast_path_part_number(mock_rag_engine):
+    """Test intent detection fast path using a part number."""
     from app.services.rag_engine import INTENT_SEARCH
 
     # Act
@@ -124,6 +130,7 @@ async def test_detect_intent_fast_path_part_number(mock_rag_engine):
 
 @pytest.mark.asyncio
 async def test_detect_intent_fallback_override(mock_rag_engine):
+    """Test intent detection where fallback override forces a search intent."""
     from app.services.rag_engine import INTENT_GENERAL, INTENT_SEARCH
 
     # Arrange

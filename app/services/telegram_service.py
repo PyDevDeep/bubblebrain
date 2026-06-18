@@ -19,6 +19,7 @@ logger = get_logger(__name__)
 
 class TelegramService:
     def __init__(self, settings: Settings) -> None:
+        """Initialize TelegramService with settings."""
         self.token = settings.telegram_bot_token
         self.chat_id = settings.telegram_chat_id
         self.base_url = (
@@ -44,6 +45,7 @@ class TelegramService:
         reply_markup: dict[str, Any] | None = None,
         session_id: str | None = None,
     ) -> bool:
+        """Send an alert message to a specific Telegram topic."""
         if not self.base_url or not self.chat_id:
             logger.warning("Telegram credentials missing, alert not sent.")
             return False
@@ -96,7 +98,7 @@ class TelegramService:
     async def send_lead(
         self, lead: LeadData, context_info: str = DEFAULT_LEAD_CONTEXT, retries: int = 3
     ) -> bool:
-        """Відправка валідованого ліда менеджеру."""
+        """Send a validated lead to the manager."""
         if not self.base_url or not self.chat_id:
             logger.warning("Telegram credentials missing, lead not sent.")
             return False
@@ -168,6 +170,7 @@ class TelegramService:
         reply_markup: dict[str, Any] | None = None,
         chat_id: int | str | None = None,
     ) -> bool:
+        """Edit the text of an existing message."""
         if not self.token:
             return False
 
@@ -197,6 +200,7 @@ class TelegramService:
         caption: str = "",
         alert_type: str = "general",
     ) -> bool:
+        """Send a document to a specific Telegram topic."""
         if not self.token or not self.chat_id:
             logger.warning("Telegram credentials missing, document not sent.")
             return False

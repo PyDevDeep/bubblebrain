@@ -4,10 +4,10 @@ from slowapi.util import get_remote_address
 
 def get_client_ip(request: Request) -> str:
     """
-    Безпечне витягування IP клієнта.
-    Покладається на request.client.host, який коректно заповнюється,
-    якщо uvicorn запущено з --proxy-headers та --forwarded-allow-ips.
-    Якщо ні, використовуємо фолбек slowapi.
+    Safely extract client IP.
+    Relies on request.client.host, which is correctly populated
+    if uvicorn is running with --proxy-headers and --forwarded-allow-ips.
+    If not, we use slowapi fallback.
     """
     if request.client and request.client.host:
         return request.client.host

@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-# Додаємо корінь проекту до sys.path для імпорту модулів app
+# Add the project root to sys.path to import app modules
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from app.core.config import get_settings
@@ -15,7 +15,7 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Ініціалізацію шляхів винесено на рівень модуля
+# Path initialization is moved to the module level
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_FILE = OUTPUT_DIR / "categories.csv"
@@ -23,7 +23,7 @@ TEMP_FILE = OUTPUT_DIR / "categories_temp.csv"
 
 
 def _write_csv_sync(categories: list[dict[str, Any]]) -> None:
-    """Синхронна функція запису у файл для виконання в окремому потоці."""
+    """Synchronous file writing function for execution in a separate thread."""
     fieldnames = ["ID", "Name", "Slug", "Parent ID", "Count"]
 
     try:
@@ -40,7 +40,7 @@ def _write_csv_sync(categories: list[dict[str, Any]]) -> None:
                         "Count": cat.get("count", ""),
                     }
                 )
-        # Атомарна заміна файлу
+        # Atomic file replacement
         os.replace(TEMP_FILE, OUTPUT_FILE)
         logger.info(f"Успішно експортовано {len(categories)} категорій у файл {OUTPUT_FILE}")
     except Exception as e:
@@ -50,6 +50,7 @@ def _write_csv_sync(categories: list[dict[str, Any]]) -> None:
 
 
 async def export_categories_to_csv() -> None:
+    """Asynchronously export categories from WooCommerce to a CSV file."""
     settings = get_settings()
     base_url = f"{settings.woo_url.rstrip('/')}/wp-json/wc/v3/products/categories"
 
@@ -57,7 +58,7 @@ async def export_categories_to_csv() -> None:
     page = 1
     per_page = 100
 
-    # Таймаут для запитів до API
+    # API request timeout
     timeout = httpx.Timeout(10.0, connect=3.0)
 
     async with httpx.AsyncClient(timeout=timeout) as client:
@@ -79,8 +80,8 @@ async def export_categories_to_csv() -> None:
 
                 categories.extend(data)
 
-                # Якщо кількість повернутих категорій менша за per_page,
-                # значить це остання сторінка
+                # If the number of returned categories is less than per_page,
+                # it means this is the last page
                 if len(data) < per_page:
                     break
 
@@ -95,7 +96,7 @@ async def export_categories_to_csv() -> None:
         logger.warning("Категорії не знайдено, дамп скасовано.")
         return
 
-    # Асинхронний виклик синхронного I/O в окремому потоці (захист Event Loop)
+    # Asynchronous call of synchronous I/O in a separate thread (Event Loop protection)
     await asyncio.to_thread(_write_csv_sync, categories)
 
 
