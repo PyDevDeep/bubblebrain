@@ -63,17 +63,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         SQLAlchemyJobStore,
     )
 
+    from app.services.statistics_service import gather_and_send_daily_report_job
+
     jobstores = {"default": SQLAlchemyJobStore(url="sqlite:///bubblebrain.db")}
     scheduler = AsyncIOScheduler(jobstores=jobstores)  # type: ignore
     scheduler.add_job(  # type: ignore[reportUnknownMemberType]
         export_categories_to_csv,
-        trigger=CronTrigger(hour=3, minute=0),
+        trigger=CronTrigger(hour=3, minute=0, timezone="Europe/Kyiv"),
         id="export_woo_categories",
         name="Export WooCommerce categories to CSV",
         replace_existing=True,
     )
+
+    # Додаємо джобу для щоденної статистики о 09:00 (за Київським часом)
+    scheduler.add_job(  # type: ignore[reportUnknownMemberType]
+        gather_and_send_daily_report_job,
+        trigger=CronTrigger(hour=9, minute=0, timezone="Europe/Kyiv"),
+        id="daily_bot_statistics",
+        name="Send Daily Bot Statistics to TG",
+        replace_existing=True,
+    )
+
     scheduler.start()  # type: ignore
-    logger.info("APScheduler started: category export scheduled at 03:00")
+    logger.info("APScheduler started: jobs scheduled")
 
     yield
 
@@ -90,7 +102,7 @@ def create_application() -> FastAPI:
     app = FastAPI(
         title="Chatbot AI Backend",
         version="0.1.0",
-        description="Backend for Flowise Chat Embed with RAG",
+        description="Backend for Chat Embed with RAG",
         lifespan=lifespan,
     )
 
@@ -128,6 +140,12 @@ def create_application() -> FastAPI:
     _ = debug_fs  # Маскування для Pylance (запобігає помилці неактивного коду)
 
     app.mount("/widget", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
+
+    # Прометеус метрики
+    from prometheus_client import make_asgi_app  # type: ignore[import-untyped]
+
+    metrics_app = make_asgi_app()  # type: ignore
+    app.mount("/metrics", metrics_app)  # type: ignore
 
     return app
 
