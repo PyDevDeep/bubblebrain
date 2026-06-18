@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.core.constants import INTENT_CHECKOUT, INTENT_PRODUCT
+from app.core.constants import INTENT_CHECKOUT
 from app.services.intent_handlers import ProductCheckoutIntentHandler, SearchIntentHandler
 
 
@@ -24,6 +24,9 @@ async def test_product_checkout_intent_checkout(
     mock_price_comparator, mock_telegram_service, mock_settings
 ):
     # Arrange
+    mock_settings.telegram_contact_url = "http://tg"
+    mock_settings.viber_contact_url = "http://viber"
+
     handler = ProductCheckoutIntentHandler(
         mock_price_comparator, mock_telegram_service, mock_settings
     )
@@ -32,6 +35,10 @@ async def test_product_checkout_intent_checkout(
     mock_result.needs_alert = False
     mock_result.woo_url = "http://woo"
     mock_result.product_name = "Test Product"
+    mock_result.attributes = {}
+    mock_result.short_description = ""
+    mock_result.woo_price = 100
+    mock_result.availability_status = "instock"
     mock_price_comparator.compare.return_value = mock_result
 
     # Act
@@ -57,6 +64,9 @@ async def test_product_checkout_intent_alert(
     mock_price_comparator, mock_telegram_service, mock_settings
 ):
     # Arrange
+    mock_settings.telegram_contact_url = "http://tg"
+    mock_settings.viber_contact_url = "http://viber"
+
     handler = ProductCheckoutIntentHandler(
         mock_price_comparator, mock_telegram_service, mock_settings
     )
@@ -68,11 +78,14 @@ async def test_product_checkout_intent_alert(
     mock_result.woo_price = 100
     mock_result.supplier_price_uah = 50
     mock_result.diff_woo_uah = 50
+    mock_result.woo_url = "http://woo"
+    mock_result.attributes = {}
+    mock_result.short_description = ""
     mock_price_comparator.compare.return_value = mock_result
 
     # Act
     res = await handler.handle(
-        intent_type=INTENT_PRODUCT,
+        intent_type=INTENT_CHECKOUT,
         product_name="Test Product",
         category_id=1,
         system_instructions=[],
