@@ -4,7 +4,7 @@ Service for providing basic protection against Prompt Injection (Guardrails).
 
 import re
 
-from app.core.constants import INJECTION_PATTERNS
+from app.core.constants import INJECTION_PATTERNS, MAX_PAYLOAD_SIZE
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -16,15 +16,10 @@ class GuardrailsService:
     for attempts to bypass system instructions.
     """
 
-    def __init__(self) -> None:
-        """
-        Initializes the service by loading and compiling regular expressions
-        for detecting attacks in English, Ukrainian, and Russian.
-        """
-        # Regular expressions and patterns for detecting Prompt Injection attempts (English + Ukrainian + Russian)
-        self.injection_patterns = INJECTION_PATTERNS
-
-        self.compiled_patterns = [re.compile(p) for p in self.injection_patterns]
+    _COMPILED_PATTERN = re.compile(
+        "|".join(p.replace("(?is)", "") for p in INJECTION_PATTERNS),
+        flags=re.IGNORECASE | re.DOTALL,
+    )
 
     def validate_input(self, text: str, client_ip: str | None = None) -> bool:
         """
@@ -34,14 +29,21 @@ class GuardrailsService:
         if not text:
             return True
 
-        for pattern in self.compiled_patterns:
-            if pattern.search(text):
-                logger.warning(
-                    "Prompt Injection detected by heuristic",
-                    pattern=pattern.pattern,
-                    client_ip=client_ip,
-                    malicious_input=text,
-                )
-                return False
+        if len(text) > MAX_PAYLOAD_SIZE:
+            logger.warning(
+                "Payload size exceeded limits",
+                client_ip=client_ip,
+                length=len(text),
+            )
+            return False
+
+        if self._COMPILED_PATTERN.search(text):
+            safe_log_text = text[:500] + ("..." if len(text) > 500 else "")
+            logger.warning(
+                "Prompt Injection detected by heuristic",
+                client_ip=client_ip,
+                malicious_input=safe_log_text,
+            )
+            return False
 
         return True

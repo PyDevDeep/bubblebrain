@@ -73,3 +73,12 @@ class IntentContextResult:
     requires_lead: bool
     lead_form_type: Literal["contact", "checkout"] | None = None
     new_intent_type: str | None = None
+
+
+class IntentDetectionResult(BaseModel):
+    intent: str
+    product_name: str | None = None
+    strict_query: str | None = None
+    broad_query: str | None = None
+    category_query: str | None = None
+    normalized_faq_queries: list[str] | str = Field(default_factory=list)

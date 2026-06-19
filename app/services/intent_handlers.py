@@ -2,6 +2,8 @@ import html
 import logging
 from typing import Any
 
+import httpx
+
 from app.core.config import Settings
 from app.core.constants import (
     ALERT_MARGIN_ISSUE,
@@ -28,8 +30,10 @@ from app.utils.prompts import (
     INSTR_NO_DUPLICATE_LINKS,
     INSTR_NOTHING_FOUND,
     INSTR_PRICE_CHECKING,
+    INSTR_PRICE_DISCLAIMER,
     INSTR_PRODUCT_FOUND,
 )
+from app.utils.url_helpers import add_tracking_params
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +76,10 @@ class ProductCheckoutIntentHandler:
             result = await self.price_comparator.compare(
                 product_name, is_checkout=is_checkout, category_id=category_id
             )
-        except Exception:
-            logger.exception("Price comparator failed during intent handling")
+        except httpx.RequestError as e:
+            logger.exception(
+                "Price comparator failed during intent handling", extra={"error": str(e)}
+            )
             return IntentContextResult(
                 product_facts=product_facts,
                 system_instructions=system_instructions,
@@ -160,10 +166,7 @@ class ProductCheckoutIntentHandler:
                 requires_lead = True
                 lead_form_type = "checkout"
                 if result.woo_url:
-                    connector = "&" if "?" in result.woo_url else "?"
-                    tracked_url = (
-                        f"{result.woo_url}{connector}bot_source=direct&bot_chat_id={session_id}"
-                    )
+                    tracked_url = add_tracking_params(result.woo_url, session_id)
                     extracted_links.append({"text": LINK_CHECKOUT, "url": tracked_url})
                 extracted_links.append(
                     {"text": LINK_TELEGRAM, "url": self.settings.telegram_contact_url}
@@ -188,10 +191,7 @@ class ProductCheckoutIntentHandler:
             # 2. CLIENT JUST ASKING FOR INFO: return data, ignoring blocking
             if result.woo_price:
                 if result.woo_url:
-                    connector = "&" if "?" in result.woo_url else "?"
-                    tracked_url = (
-                        f"{result.woo_url}{connector}bot_source=direct&bot_chat_id={session_id}"
-                    )
+                    tracked_url = add_tracking_params(result.woo_url, session_id)
                     extracted_links.append(
                         {
                             "text": BTN_VIEW_PRODUCT.format(product_name=result.product_name),
@@ -202,10 +202,7 @@ class ProductCheckoutIntentHandler:
                 system_instructions.append(
                     INSTR_PRODUCT_FOUND.format(product_name=result.product_name)
                 )
-                system_instructions.append(
-                    "⚠️ ВАЖЛИВО: Завжди повідомляй клієнту: 'Увага! Ціна та наявність товару можуть змінюватися протягом дня. "
-                    "Будь ласка, уточнюйте актуальну вартість та наявність у менеджера перед оплатою (у чаті або за телефоном)'."
-                )
+                system_instructions.append(INSTR_PRICE_DISCLAIMER)
 
                 status_text = (
                     STATUS_INSTOCK
@@ -241,6 +238,19 @@ class SearchIntentHandler:
     def __init__(self, price_comparator: PriceComparator):
         self.price_comparator = price_comparator
 
+    async def _fetch_products(self, query: str, category_id: int | None) -> list[Any]:
+        """Helper to fetch products by strict or broad query."""
+        woo_products = await self.price_comparator.woo_service.search_products_async(
+            query, category_id=category_id, limit=3
+        )
+        if not woo_products:
+            single_prod = await self.price_comparator.woo_service.search_product_async(
+                query, category_id=category_id
+            )
+            if single_prod:
+                woo_products = [single_prod]
+        return woo_products
+
     async def handle(
         self,
         intent_data: dict[str, Any],
@@ -268,17 +278,9 @@ class SearchIntentHandler:
                     "Search intent detected (strict)",
                     extra={"query": strict_term, "category_id": category_id},
                 )
-                woo_products = await self.price_comparator.woo_service.search_products_async(
-                    strict_term, category_id=category_id, limit=3
-                )
-                if not woo_products:
-                    single_prod = await self.price_comparator.woo_service.search_product_async(
-                        strict_term, category_id=category_id
-                    )
-                    if single_prod:
-                        woo_products = [single_prod]
-        except Exception:
-            logger.exception("WooCommerce strict search failed")
+                woo_products = await self._fetch_products(strict_term, category_id)
+        except httpx.RequestError as e:
+            logger.exception("WooCommerce strict search failed", extra={"error": str(e)})
 
         is_fallback_broad = False
         is_fallback_category = False
@@ -289,20 +291,12 @@ class SearchIntentHandler:
                 extra={"query": broad_term, "category_id": category_id},
             )
             try:
-                woo_products = await self.price_comparator.woo_service.search_products_async(
-                    broad_term, category_id=category_id, limit=3
-                )
-                if not woo_products:
-                    single_prod = await self.price_comparator.woo_service.search_product_async(
-                        broad_term, category_id=category_id
-                    )
-                    if single_prod:
-                        woo_products = [single_prod]
+                woo_products = await self._fetch_products(broad_term, category_id)
 
                 if woo_products:
                     is_fallback_broad = True
-            except Exception:
-                logger.exception("WooCommerce broad search failed")
+            except httpx.RequestError as e:
+                logger.exception("WooCommerce broad search failed", extra={"error": str(e)})
 
         if not woo_products:
             if category_id is not None:
@@ -318,8 +312,8 @@ class SearchIntentHandler:
                     )
                     if woo_products:
                         is_fallback_category = True
-                except Exception:
-                    logger.exception("WooCommerce category search failed")
+                except httpx.RequestError as e:
+                    logger.exception("WooCommerce category search failed", extra={"error": str(e)})
             else:
                 logger.info("Search cascade aborted: category_id is None")
 
@@ -328,10 +322,7 @@ class SearchIntentHandler:
             search_facts.append(SEARCH_FOUND_HEADER)
 
             # Add a disclaimer about price estimation once
-            system_instructions.append(
-                "⚠️ ВАЖЛИВО: Завжди повідомляй клієнту: 'Увага! Ціна та наявність товару можуть змінюватися протягом дня. "
-                "Будь ласка, уточнюйте актуальну вартість та наявність у менеджера перед оплатою (у чаті або за телефоном)'."
-            )
+            system_instructions.append(INSTR_PRICE_DISCLAIMER)
 
             for product in woo_products:
                 status = (
@@ -351,10 +342,7 @@ class SearchIntentHandler:
                     search_facts.append(f"  Characteristics:\n{attr_str}")
 
                 if product.url:
-                    connector = "&" if "?" in product.url else "?"
-                    tracked_url = (
-                        f"{product.url}{connector}bot_source=direct&bot_chat_id={session_id}"
-                    )
+                    tracked_url = add_tracking_params(product.url, session_id)
                     extracted_links.append({"text": product.name, "url": tracked_url})
 
             search_facts.append(INSTR_NO_DUPLICATE_LINKS)

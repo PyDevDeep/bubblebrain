@@ -1,3 +1,4 @@
+import asyncio
 import io
 import re
 
@@ -8,6 +9,22 @@ from fastapi import UploadFile
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _parse_pdf(content: bytes) -> str:
+    with pdfplumber.open(io.BytesIO(content)) as pdf:
+        pages_text: list[str] = []
+        for page in pdf.pages:
+            page_text = str(page.extract_text()) if page.extract_text() else ""
+            if page_text:
+                pages_text.append(page_text)
+        return "\n\n".join(pages_text)
+
+
+def _parse_docx(content: bytes) -> str:
+    doc = Document(io.BytesIO(content))
+    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+    return "\n\n".join(paragraphs)
 
 
 async def extract_text(file: UploadFile) -> str:
@@ -30,25 +47,17 @@ async def extract_text(file: UploadFile) -> str:
         if content_type in ("text/plain", "text/markdown") or filename_lower.endswith(
             (".txt", ".md")
         ):
-            text = content.decode("utf-8")
+            text = content.decode("utf-8", errors="replace")
 
         elif content_type == "application/pdf" or filename_lower.endswith(".pdf"):
-            with pdfplumber.open(io.BytesIO(content)) as pdf:
-                pages_text: list[str] = []
-                for page in pdf.pages:
-                    page_text = str(page.extract_text()) if page.extract_text() else ""
-                    if page_text:
-                        pages_text.append(page_text)
-                text = "\n\n".join(pages_text)
+            text = await asyncio.to_thread(_parse_pdf, content)
 
         elif (
             content_type
             == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             or filename_lower.endswith(".docx")
         ):
-            doc = Document(io.BytesIO(content))
-            paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-            text = "\n\n".join(paragraphs)
+            text = await asyncio.to_thread(_parse_docx, content)
 
         else:
             raise ValueError(f"Unsupported file type: {content_type}")
@@ -89,6 +98,11 @@ def chunk_text(text: str, chunk_size: int = 512, overlap: int = 50) -> list[str]
     while i < len(sentences):
         sentence = sentences[i]
         sentence_len = len(sentence)
+
+        if sentence_len > max_chars:
+            pieces = [sentence[j : j + max_chars] for j in range(0, sentence_len, max_chars)]
+            sentences[i : i + 1] = pieces
+            continue
 
         if current_length + sentence_len > max_chars and current_chunk_sentences:
             chunks.append(" ".join(current_chunk_sentences))

@@ -1,6 +1,13 @@
+import re
 from datetime import UTC, datetime
 
 from app.core.config import Settings
+from app.core.constants import (
+    SUPP_AVAIL_CLARIFY,
+    SUPP_AVAIL_IN_STOCK,
+    SUPP_AVAIL_ON_DEMAND,
+    SUPP_AVAIL_OUT_OF_STOCK,
+)
 from app.core.logging_config import get_logger
 from app.core.metrics import price_alerts_total
 from app.schemas.cache import CacheEntry
@@ -31,12 +38,12 @@ class PriceComparator:
         """Map supplier availability status to standard text."""
         s = supp_status.lower() if supp_status else ""
         if "skladom" in s or "ihneď k odberu" in s or "po objednaní" in s:
-            return "В наявності (доставка 3-5 днів)"
+            return SUPP_AVAIL_IN_STOCK
         elif "na objednávku" in s:
-            return "Під замовлення (14-21 днів)"
+            return SUPP_AVAIL_ON_DEMAND
         elif "aktuálne nedostupné" in s:
-            return "Немає в наявності"
-        return "Уточнюється у постачальника"
+            return SUPP_AVAIL_OUT_OF_STOCK
+        return SUPP_AVAIL_CLARIFY
 
     async def compare(
         self, product_name: str, is_checkout: bool = False, category_id: int | None = None
@@ -63,8 +70,6 @@ class PriceComparator:
 
         sku = woo_result.sku
 
-        import re
-
         match = re.search(r"\(([^)]+)\)$", woo_result.name.strip())
         if match:
             sku = match.group(1).strip()
@@ -74,7 +79,7 @@ class PriceComparator:
                 product_name=woo_result.name,
                 woo_price=woo_result.price_uah,
                 supplier_price_uah=None,
-                availability_status="Уточнюється у постачальника",
+                availability_status=SUPP_AVAIL_CLARIFY,
                 needs_alert=True,
                 alert_reason="scraper_failed_no_sku",
                 woo_url=woo_result.url,
@@ -121,7 +126,7 @@ class PriceComparator:
                 supp_availability_raw = supp_result.availability_status
                 supp_url = supp_result.url
 
-                if supp_price_uah:
+                if supp_price_uah is not None:
                     new_entry = CacheEntry(
                         sku=sku,
                         product_name=woo_result.name,
@@ -138,7 +143,7 @@ class PriceComparator:
         needs_alert = False
         alert_reason = None
 
-        if woo_result.price_uah and supp_price_uah:
+        if woo_result.price_uah is not None and supp_price_uah is not None:
             diff_woo = round(woo_result.price_uah - supp_price_uah, 2)
 
             if abs(diff_woo) > self.margin_threshold:
@@ -147,7 +152,7 @@ class PriceComparator:
                 price_alerts_total.inc()
                 await self.cache_service.invalidate(sku)
 
-        elif woo_result.price_uah and not supp_price_uah:
+        elif woo_result.price_uah is not None and supp_price_uah is None:
             needs_alert = True
             alert_reason = "scraper_failed"
             price_alerts_total.inc()

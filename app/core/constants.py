@@ -9,6 +9,7 @@ MSG_STREAM_FAILED = (
 )
 MSG_SYNC_CHAT_FAILED = "Вибачте, виникла технічна затримка при обробці запиту. Спробуйте переформулювати питання або зверніться до нашого менеджера напряму."
 MSG_STREAM_CHAT_FAILED = "Технічна затримка на лінії. Оновіть сторінку або напишіть нам пізніше."
+MSG_SYSTEM_ERROR = "Виникла системна помилка при обробці запиту. Спробуйте пізніше."
 
 # --- Link Texts ---
 LINK_CHECKOUT = "Оформити замовлення"
@@ -18,6 +19,12 @@ LINK_VIBER = "📞 Написати у Viber"
 # --- Statuses ---
 STATUS_INSTOCK = "В наявності"
 STATUS_OUT_OF_STOCK = "Під замовлення"
+
+# --- Supplier Availability Mappings ---
+SUPP_AVAIL_IN_STOCK = "В наявності (доставка 3-5 днів)"
+SUPP_AVAIL_ON_DEMAND = "Під замовлення (14-21 днів)"
+SUPP_AVAIL_OUT_OF_STOCK = "Немає в наявності"
+SUPP_AVAIL_CLARIFY = "Уточнюється у постачальника"
 
 # --- Search / Facts Headers ---
 SEARCH_FOUND_HEADER = "Знайдено у нашому магазині:"
