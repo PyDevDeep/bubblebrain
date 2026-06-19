@@ -1,10 +1,12 @@
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 
+from app.core.config import Settings, get_settings
 from app.core.constants import STATISTICS_TEMPLATE
 from app.core.db import AsyncSessionLocal
 from app.models.chat_memory import ChatMessage
@@ -14,7 +16,7 @@ from app.services.woo_service import WooService
 logger = logging.getLogger(__name__)
 
 
-async def fetch_prometheus_data() -> dict[str, float]:
+async def fetch_prometheus_data(settings: Settings) -> dict[str, float]:
     """Collects aggregated metrics for the last 24 hours from local Prometheus."""
     metrics = {
         "tokens": 0.0,
@@ -26,8 +28,8 @@ async def fetch_prometheus_data() -> dict[str, float]:
         "conversions": 0.0,
     }
 
-    # Prometheus HTTP API URL (within docker network)
-    prom_url = "http://prometheus:9090/api/v1/query"
+    # Prometheus HTTP API URL
+    prom_url = getattr(settings, "prometheus_url", "http://prometheus:9090/api/v1/query")
 
     queries = {
         "tokens": "sum(increase(llm_tokens_total[24h]))",
@@ -39,19 +41,21 @@ async def fetch_prometheus_data() -> dict[str, float]:
         "conversions": 'sum(increase(leads_created_total{type="conversion"}[24h]))',
     }
 
+    async def _fetch_metric(client: httpx.AsyncClient, key: str, query: str) -> None:
+        try:
+            resp = await client.get(prom_url, params={"query": query})
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("data", {}).get("result", [])
+                if results:
+                    val_str = results[0].get("value", [0, "0"])[1]
+                    if val_str and val_str != "NaN":
+                        metrics[key] = float(val_str)
+        except Exception:
+            logger.error(f"Failed to fetch prometheus metric {key}", exc_info=True)
+
     async with httpx.AsyncClient(timeout=10.0) as client:
-        for key, query in queries.items():
-            try:
-                resp = await client.get(prom_url, params={"query": query})
-                if resp.status_code == 200:
-                    data = resp.json()
-                    results = data.get("data", {}).get("result", [])
-                    if results:
-                        val_str = results[0].get("value", [0, "0"])[1]
-                        if val_str and val_str != "NaN":
-                            metrics[key] = float(val_str)
-            except Exception:
-                logger.error(f"Failed to fetch prometheus metric {key}", exc_info=True)
+        await asyncio.gather(*(_fetch_metric(client, k, q) for k, q in queries.items()))
 
     return metrics
 
@@ -61,12 +65,11 @@ async def fetch_unique_users_24h() -> int:
     past_24h = datetime.now(UTC) - timedelta(hours=24)
     async with AsyncSessionLocal() as session:
         try:
-            stmt = (
-                select(ChatMessage.session_id).where(ChatMessage.created_at >= past_24h).distinct()
+            stmt = select(func.count(func.distinct(ChatMessage.session_id))).where(
+                ChatMessage.created_at >= past_24h
             )
             result = await session.execute(stmt)
-            unique_sessions = result.scalars().all()
-            return len(unique_sessions)
+            return result.scalar() or 0
         except Exception:
             logger.error("Failed to fetch unique users", exc_info=True)
             return 0
@@ -74,15 +77,13 @@ async def fetch_unique_users_24h() -> int:
 
 async def gather_and_send_daily_report_job() -> None:
     """Function for APScheduler that aggregates data and sends it to Telegram."""
-    from app.core.config import get_settings
-
     settings = get_settings()
 
     telegram_service = TelegramService(settings)
     woo_service = WooService(settings)
 
     # 1. Prometheus Metrics
-    prom_stats = await fetch_prometheus_data()
+    prom_stats = await fetch_prometheus_data(settings)
 
     # 2. SQLite (Unique users)
     unique_users = await fetch_unique_users_24h()
