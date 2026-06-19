@@ -12,9 +12,12 @@ class ChatMemoryService:
     def __init__(self) -> None:
         pass
 
-    async def get_history(self, session_id: str, limit: int = 6) -> list[dict[str, str]]:
+    async def get_history(
+        self, session_id: str, limit: int = 6, ignore_reset: bool = False
+    ) -> list[dict[str, str]]:
         """
         Retrieves the last N messages for a given session.
+        If ignore_reset is False, filters out messages before the last '---context-reset---' marker.
         Returns a list of dicts: [{"role": "user", "content": "..."}]
         """
         async with AsyncSessionLocal() as session:
@@ -28,9 +31,17 @@ class ChatMemoryService:
             messages = result.scalars().all()
 
             # They are ordered desc (newest first), we want them in chronological order
-            history = [
-                {"role": str(msg.role), "content": str(msg.content)} for msg in reversed(messages)
-            ]
+            history: list[dict[str, str]] = []
+            for msg in reversed(messages):
+                if not ignore_reset and msg.content == "---context-reset---":
+                    history.clear()  # Drop all older messages up to this reset point
+                    continue
+
+                if msg.content == "---context-reset---":
+                    continue  # Skip the marker itself even in full logs
+
+                history.append({"role": str(msg.role), "content": str(msg.content)})
+
             return history
 
     async def add_message(self, session_id: str, role: str, content: str) -> None:
@@ -66,3 +77,7 @@ class ChatMemoryService:
             except Exception:
                 logger.exception("Failed to clear chat history")
                 await session.rollback()
+
+    async def reset_rag_context(self, session_id: str) -> None:
+        """Adds a context reset marker to clear RAG context while keeping logging history."""
+        await self.add_message(session_id, role="system", content="---context-reset---")

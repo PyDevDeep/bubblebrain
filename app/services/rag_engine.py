@@ -32,8 +32,16 @@ from app.core.constants import (
     REGEX_PHONE,
     REGEX_PRODUCT_NAME_HISTORY,
 )
+from app.core.db import AsyncSessionLocal, commit_with_retry
 from app.core.logging_config import get_logger
-from app.schemas.chat import IntentContextResult, LinkItem, PipelineContext, RAGResponse
+from app.models.lead import Lead
+from app.schemas.chat import (
+    IntentContextResult,
+    IntentDetectionResult,
+    LinkItem,
+    PipelineContext,
+    RAGResponse,
+)
 from app.services.category_manager import CategoryManager
 from app.services.chat_memory_service import ChatMemoryService
 from app.services.guardrails_service import GuardrailsService
@@ -157,7 +165,7 @@ class RAGEngine:
                 response_format={"type": "json_object"},
             )
             cleaned = response.replace("```json", "").replace("```", "").strip()
-            parsed_json = json.loads(cleaned)
+            parsed_json = IntentDetectionResult.model_validate_json(cleaned).model_dump()
 
             # Fallback override
             if extracted_code and parsed_json.get("intent") in (INTENT_GENERAL, INTENT_FAQ):
@@ -165,7 +173,7 @@ class RAGEngine:
                 parsed_json["strict_query"] = extracted_code
                 parsed_json["broad_query"] = stripped_q
 
-            return cast(dict[str, Any], parsed_json)
+            return parsed_json
         except json.JSONDecodeError:
             logger.exception("Intent detection JSON parsing failed")
             return {"intent": INTENT_FAQ, "normalized_faq_queries": [question]}
@@ -174,13 +182,16 @@ class RAGEngine:
             return {"intent": INTENT_FAQ, "normalized_faq_queries": [question]}
 
     async def _retrieve_context(
-        self, search_query: str
+        self, search_query: str, precomputed_vector: list[float] | None = None
     ) -> tuple[list[str], set[str], dict[str, float]]:
         """
         Retrieves relevant document chunks from the vector database.
         """
         start_embed = time.perf_counter()
-        query_vector = await self.openai_service.generate_embedding(search_query)
+        if precomputed_vector:
+            query_vector = precomputed_vector
+        else:
+            query_vector = await self.openai_service.generate_embedding(search_query)
         emb_time = round((time.perf_counter() - start_embed) * 1000, 2)
 
         start_retrieve = time.perf_counter()
@@ -316,7 +327,7 @@ class RAGEngine:
                     match = re.search(r"(https?://\S+)", msg)
                     if match:
                         product_url = str(match.group(1)).strip()
-                    break
+                        break
 
                 # Search for problematic margin markers (from the instructions we added in intent_handlers)
                 full_history_text = " ".join(bot_msgs).lower()
@@ -326,9 +337,6 @@ class RAGEngine:
             lead_type = "price_clarification" if is_price_clarification else "contact"
 
             try:
-                from app.core.db import AsyncSessionLocal, commit_with_retry
-                from app.models.lead import Lead
-
                 async with AsyncSessionLocal() as session:
                     db_lead = Lead(
                         name="Клієнт з чату",
@@ -455,8 +463,13 @@ class RAGEngine:
             ]
         )
 
+        # Local caching for embeddings
+        embedding_cache: dict[str, list[float]] = {}
+
         # First, vector check of the keyword
         query_vector = await self.openai_service.generate_embedding(question)
+        embedding_cache[question] = query_vector
+
         faq_results = await asyncio.to_thread(
             self.vector_service.query_similar,
             query_vector=query_vector,
@@ -475,7 +488,7 @@ class RAGEngine:
             intent_data["normalized_faq_queries"] = []
 
         if intent_type == INTENT_SEARCH:
-            await self.chat_memory_service.clear_history(session_id)
+            await self.chat_memory_service.reset_rag_context(session_id)
             history_context = ""
             history = []
 
@@ -493,7 +506,10 @@ class RAGEngine:
 
         vector_tasks = []
         if valid_queries:
-            vector_tasks = [self._retrieve_context(nq) for nq in valid_queries]
+            vector_tasks = [
+                self._retrieve_context(nq, precomputed_vector=embedding_cache.get(nq))
+                for nq in valid_queries
+            ]
 
         async def fetch_vectors() -> list[
             tuple[list[str], set[str], dict[str, float]] | BaseException
@@ -612,7 +628,9 @@ class RAGEngine:
                 error=str(e),
                 extra={"session_id": session_id},
             )
-            answer = MSG_GUARDRAIL_FAILED
+            from app.core.constants import MSG_SYSTEM_ERROR
+
+            answer = MSG_SYSTEM_ERROR
             return RAGResponse.model_validate(
                 {
                     "answer": answer,

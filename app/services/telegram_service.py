@@ -58,7 +58,7 @@ class TelegramService:
             payload["message_thread_id"] = topic_id
 
         alert_success = False
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             for attempt in range(retries):
                 try:
                     resp = await client.post(
@@ -85,7 +85,9 @@ class TelegramService:
             from app.services.chat_memory_service import ChatMemoryService
 
             chat_memory_service = ChatMemoryService()
-            history = await chat_memory_service.get_history(session_id, limit=100)
+            history = await chat_memory_service.get_history(
+                session_id, limit=100, ignore_reset=True
+            )
             if history:
                 history_lines = [f"{msg['role'].upper()}: {msg['content']}" for msg in history]
                 history_text = "\n\n".join(history_lines)
@@ -116,7 +118,7 @@ class TelegramService:
         if topic_id:
             payload["message_thread_id"] = topic_id
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             for attempt in range(retries):
                 try:
                     resp = await client.post(
@@ -155,7 +157,7 @@ class TelegramService:
         if reply_markup:
             payload["reply_markup"] = reply_markup
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 resp = await client.post(url, json=payload)
                 return resp.status_code == 200
@@ -185,7 +187,7 @@ class TelegramService:
         if reply_markup:
             payload["reply_markup"] = reply_markup
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 resp = await client.post(url, json=payload)
                 return resp.status_code == 200
@@ -216,7 +218,7 @@ class TelegramService:
 
         files = {"document": (document_name, document_content.encode("utf-8"), "text/plain")}
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             for attempt in range(3):
                 try:
                     resp = await client.post(url, data=data, files=files)

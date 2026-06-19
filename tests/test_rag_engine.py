@@ -49,7 +49,14 @@ async def test_detect_intent_valid_json(mock_rag_engine):
     result = await mock_rag_engine.detect_intent("What is this?", "")
 
     # Assert
-    assert result == {"intent": "FAQ", "product_name": None}
+    assert result == {
+        "intent": "FAQ",
+        "product_name": None,
+        "category_query": None,
+        "strict_query": None,
+        "broad_query": None,
+        "normalized_faq_queries": [],
+    }
 
 
 @pytest.mark.asyncio

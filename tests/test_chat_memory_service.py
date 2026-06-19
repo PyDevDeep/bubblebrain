@@ -41,6 +41,33 @@ async def test_get_history(mock_session_local, service):
 
 
 @pytest.mark.asyncio
+@patch("app.services.chat_memory_service.AsyncSessionLocal")
+async def test_get_history_with_reset(mock_session_local, service):
+    mock_session = AsyncMock()
+    mock_session_local.return_value.__aenter__.return_value = mock_session
+    mock_result = MagicMock()
+
+    msg1 = ChatMessage(session_id="test", role="user", content="Hi 1")
+    msg_reset = ChatMessage(session_id="test", role="system", content="---context-reset---")
+    msg2 = ChatMessage(session_id="test", role="user", content="Hi 2")
+
+    # DB returns newest first
+    mock_result.scalars.return_value.all.return_value = [msg2, msg_reset, msg1]
+    mock_session.execute.return_value = mock_result
+
+    # Default: ignore_reset=False (should clear everything before and including reset)
+    history_rag = await service.get_history("test", limit=3)
+    assert len(history_rag) == 1
+    assert history_rag[0]["content"] == "Hi 2"
+
+    # For logging: ignore_reset=True (should return everything but skip the marker)
+    history_log = await service.get_history("test", limit=3, ignore_reset=True)
+    assert len(history_log) == 2
+    assert history_log[0]["content"] == "Hi 1"
+    assert history_log[1]["content"] == "Hi 2"
+
+
+@pytest.mark.asyncio
 @patch("app.services.chat_memory_service.commit_with_retry")
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
 async def test_add_message(mock_session_local, mock_commit, service):
@@ -128,3 +155,12 @@ async def test_clear_history_error(mock_session_local, mock_commit, service):
     await service.clear_history("test")
 
     mock_session.rollback.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("app.services.chat_memory_service.ChatMemoryService.add_message")
+async def test_reset_rag_context(mock_add_message, service):
+    await service.reset_rag_context("test_session")
+    mock_add_message.assert_called_once_with(
+        "test_session", role="system", content="---context-reset---"
+    )
