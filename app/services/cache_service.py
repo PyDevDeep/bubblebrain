@@ -25,11 +25,12 @@ class CacheService:
             price_uah REAL NOT NULL,
             availability_status TEXT NOT NULL,
             delivery_time_description TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at INTEGER NOT NULL
         )
         """
         try:
             async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("PRAGMA journal_mode=WAL;")
                 await db.execute(query)
                 await db.commit()
                 logger.info("SQLite cache initialized", db_path=self.db_path)
@@ -57,7 +58,7 @@ class CacheService:
                         price_uah=row["price_uah"],
                         availability_status=row["availability_status"],
                         delivery_time_description=row["delivery_time_description"],
-                        updated_at=datetime.fromisoformat(row["updated_at"]),
+                        updated_at=datetime.fromtimestamp(row["updated_at"], tz=UTC),
                     )
         except sqlite3.Error as e:
             # --- ADDED FAILSAFE ---
@@ -69,14 +70,14 @@ class CacheService:
             # -----------------------
             return None
 
-    async def set(self, entry: CacheEntry) -> None:
+    async def set(self, entry: CacheEntry, _retry: bool = False) -> None:
         """Saving or overwriting data for SKU."""
         query = """
         INSERT OR REPLACE INTO product_cache
         (sku, product_name, price_eur, price_uah, availability_status, delivery_time_description, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """
-        updated_at_iso = datetime.now(UTC).isoformat()
+        updated_at_ts = int(datetime.now(UTC).timestamp())
 
         try:
             async with aiosqlite.connect(self.db_path) as db:
@@ -89,18 +90,18 @@ class CacheService:
                         entry.price_uah,
                         entry.availability_status,
                         entry.delivery_time_description,
-                        updated_at_iso,
+                        updated_at_ts,
                     ),
                 )
                 await db.commit()
         except sqlite3.Error as e:
             # --- ADDED FAILSAFE AND RETRY ---
-            if "no such table" in str(e):
+            if "no such table" in str(e) and not _retry:
                 logger.warning(
                     "Cache table missing during SET. Initializing and retrying...", sku=entry.sku
                 )
                 await self.initialize()
-                await self.set(entry)  # Retry saving
+                await self.set(entry, _retry=True)  # Retry saving
             else:
                 logger.error("SQLite SET error", error=str(e), sku=entry.sku)
             # ---------------------------------
@@ -117,12 +118,12 @@ class CacheService:
     async def purge_expired(self) -> int:
         """Deleting old records. Called when the application starts."""
         cutoff_date = datetime.now(UTC) - timedelta(days=self.ttl_days)
-        cutoff_iso = cutoff_date.isoformat()
+        cutoff_ts = int(cutoff_date.timestamp())
 
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(
-                    "DELETE FROM product_cache WHERE updated_at < ?", (cutoff_iso,)
+                    "DELETE FROM product_cache WHERE updated_at < ?", (cutoff_ts,)
                 )
                 deleted_count = cursor.rowcount
                 await db.commit()
