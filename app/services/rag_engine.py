@@ -195,8 +195,7 @@ class RAGEngine:
         emb_time = round((time.perf_counter() - start_embed) * 1000, 2)
 
         start_retrieve = time.perf_counter()
-        results = await asyncio.to_thread(
-            self.vector_service.query_similar,
+        results = await self.vector_service.query_similar(
             query_vector=query_vector,
             top_k=self.top_k,
             score_threshold=self.threshold,
@@ -470,8 +469,7 @@ class RAGEngine:
         query_vector = await self.openai_service.generate_embedding(question)
         embedding_cache[question] = query_vector
 
-        faq_results = await asyncio.to_thread(
-            self.vector_service.query_similar,
+        faq_results = await self.vector_service.query_similar(
             query_vector=query_vector,
             top_k=1,
             score_threshold=self.threshold,

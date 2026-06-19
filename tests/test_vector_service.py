@@ -41,6 +41,10 @@ def test_ensure_index_exists_creates_index(mock_pinecone_class, mock_settings):
     mock_pc = cast(Any, service.pc)
     mock_pc.list_indexes.return_value = []
 
+    mock_desc = MagicMock()
+    mock_desc.status = {"ready": True}
+    mock_pc.describe_index.return_value = mock_desc
+
     # Act
     service.ensure_index_exists()
 
@@ -57,6 +61,7 @@ def test_ensure_index_exists_creates_index(mock_pinecone_class, mock_settings):
 async def test_upsert_vectors(mock_pinecone_class, mock_settings):
     # Arrange
     service = VectorService(mock_settings)
+    service.index = MagicMock()
 
     vectors = [
         ("id1", [0.1] * 1536, {"source": "test1"}),
@@ -77,10 +82,12 @@ async def test_upsert_vectors(mock_pinecone_class, mock_settings):
     assert formatted_batch[0]["metadata"] == {"source": "test1"}
 
 
+@pytest.mark.asyncio
 @patch("app.services.vector_service.Pinecone")
-def test_query_similar(mock_pinecone_class, mock_settings):
+async def test_query_similar(mock_pinecone_class, mock_settings):
     # Arrange
     service = VectorService(mock_settings)
+    service.index = MagicMock()
 
     mock_response = MagicMock()
     mock_match1 = MagicMock()
@@ -97,7 +104,7 @@ def test_query_similar(mock_pinecone_class, mock_settings):
     service.index.query.return_value = mock_response
 
     # Act
-    results = service.query_similar(query_vector=[0.1] * 1536, top_k=2, score_threshold=0.8)
+    results = await service.query_similar(query_vector=[0.1] * 1536, top_k=2, score_threshold=0.8)
 
     # Assert
     service.index.query.assert_called_once_with(
@@ -112,24 +119,28 @@ def test_query_similar(mock_pinecone_class, mock_settings):
     assert results[0]["metadata"] == {"source": "test1"}
 
 
+@pytest.mark.asyncio
 @patch("app.services.vector_service.Pinecone")
-def test_delete_by_source(mock_pinecone_class, mock_settings):
+async def test_delete_by_source(mock_pinecone_class, mock_settings):
     # Arrange
     service = VectorService(mock_settings)
+    service.index = MagicMock()
 
     # Act
-    service.delete_by_source("test_source")
+    await service.delete_by_source("test_source")
 
     # Assert
     service.index.delete.assert_called_once_with(filter={"source": "test_source"})
 
 
+@pytest.mark.asyncio
 @patch("app.services.vector_service.Pinecone")
-def test_delete_by_source_exception(mock_pinecone_class, mock_settings):
+async def test_delete_by_source_exception(mock_pinecone_class, mock_settings):
     # Arrange
     service = VectorService(mock_settings)
+    service.index = MagicMock()
     service.index.delete.side_effect = PineconeException("DB error")
 
     # Act & Assert
     with pytest.raises(PineconeException, match="DB error"):
-        service.delete_by_source("test_source")
+        await service.delete_by_source("test_source")

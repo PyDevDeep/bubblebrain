@@ -137,7 +137,7 @@ async def main():
 
     # Перед заливкою нових правил, видаляємо старі, якщо вони були
     try:
-        vector_service.delete_by_source("store_policy")
+        await vector_service.delete_by_source("store_policy")
         print("Old store policies deleted.")
     except Exception as e:
         print(f"No old policies to delete or error occurred: {e}")
