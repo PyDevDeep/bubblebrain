@@ -40,6 +40,7 @@ async def test_product_checkout_intent_checkout(
     mock_result.product_name = "Test Product"
     mock_result.attributes = {}
     mock_result.short_description = ""
+    mock_result.categories = []
     mock_result.woo_price = 100
     mock_result.availability_status = "instock"
     mock_price_comparator.compare.return_value = mock_result
@@ -85,6 +86,7 @@ async def test_product_checkout_intent_alert(
     mock_result.woo_url = "http://woo"
     mock_result.attributes = {}
     mock_result.short_description = ""
+    mock_result.categories = []
     mock_price_comparator.compare.return_value = mock_result
 
     # Act
