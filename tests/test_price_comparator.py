@@ -242,11 +242,11 @@ async def test_compare_low_margin(
     woo_service_mock.search_product_async.return_value = woo_mock_result
 
     cache_service_mock.get.return_value = None
-    # 1000 - 900 = 100 < 200
+    # 1000 - 700 = 300 > 200
     scrape_result = SupplierProduct(
         name="P",
         price_eur=20.0,
-        price_uah=900.0,
+        price_uah=700.0,
         availability_status="skladom",
         url="",
     )
@@ -280,7 +280,7 @@ async def test_compare_checkout_margin_issue(
     scrape_result = SupplierProduct(
         name="P",
         price_eur=20.0,
-        price_uah=900.0,
+        price_uah=700.0,
         availability_status="skladom",
         url="",
     )
