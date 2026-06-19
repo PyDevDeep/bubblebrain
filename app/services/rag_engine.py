@@ -209,6 +209,10 @@ class RAGEngine:
             metadata = match.get("metadata", {})
             if "text" in metadata:
                 context_chunks.append(str(metadata["text"]))
+            elif "questions" in metadata and "answer" in metadata:
+                context_chunks.append(
+                    f"Питання: {metadata['questions']}\nВідповідь: {metadata['answer']}"
+                )
             if "source" in metadata:
                 sources.add(str(metadata["source"]))
 
@@ -233,6 +237,7 @@ class RAGEngine:
         if (not product_name or product_name == "FOUND_NAME_FROM_HISTORY") and intent_type in [
             INTENT_PRODUCT,
             INTENT_CHECKOUT,
+            INTENT_HYBRID,
         ]:
             for msg in reversed(history):
                 content = msg.get("content", "")

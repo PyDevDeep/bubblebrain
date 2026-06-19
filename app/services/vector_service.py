@@ -25,12 +25,11 @@ class VectorService:
         self.dimension = settings.pinecone_dimension
         self.metric = settings.pinecone_metric
 
-        self.index: Any | None = None
+        self.index: Any = self.pc.Index(self.index_name)  # type: ignore[reportUnknownMemberType]
 
     async def initialize(self) -> None:
         """Initialize the vector service by ensuring the index exists."""
         await asyncio.to_thread(self.ensure_index_exists)
-        self.index = self.pc.Index(self.index_name)  # type: ignore[reportUnknownMemberType]
 
     def ensure_index_exists(self) -> None:
         """
@@ -86,8 +85,6 @@ class VectorService:
             ]
 
             try:
-                if self.index is None:
-                    raise RuntimeError("Index not initialized")
                 idx: Any = self.index
                 await asyncio.to_thread(idx.upsert, vectors=formatted_batch)
                 total_upserted += len(batch)
@@ -112,8 +109,6 @@ class VectorService:
         """
         Search for the most similar vectors. Filter out results below score_threshold.
         """
-        if self.index is None:
-            raise RuntimeError("Index not initialized")
         idx: Any = self.index
 
         def _sync_query() -> list[dict[str, Any]]:
@@ -149,8 +144,6 @@ class VectorService:
         """
         Delete all vectors by metadata filter: source == source.
         """
-        if self.index is None:
-            raise RuntimeError("Index not initialized")
         idx: Any = self.index
 
         def _sync_delete() -> None:

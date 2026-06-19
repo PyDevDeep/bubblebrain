@@ -24,6 +24,7 @@ class WooProductInput(BaseModel):
     price: Any = None
     short_description: str = ""
     attributes: list[WooAttribute] = []
+    categories: list[dict[str, Any]] = []
 
 
 class ParsedProduct(TypedDict):
@@ -33,6 +34,7 @@ class ParsedProduct(TypedDict):
     price: Any
     attributes: dict[str, str]
     short_description: str
+    categories: list[str]
 
 
 def parse_product(raw_product: dict[str, Any] | None, max_desc_length: int = 400) -> ParsedProduct:
@@ -48,6 +50,7 @@ def parse_product(raw_product: dict[str, Any] | None, max_desc_length: int = 400
             "price": None,
             "attributes": {},
             "short_description": "",
+            "categories": [],
         }
 
     try:
@@ -66,6 +69,7 @@ def parse_product(raw_product: dict[str, Any] | None, max_desc_length: int = 400
             "price": None,
             "attributes": {},
             "short_description": "",
+            "categories": [],
         }
 
     clean_data: ParsedProduct = {
@@ -75,6 +79,7 @@ def parse_product(raw_product: dict[str, Any] | None, max_desc_length: int = 400
         "price": product_input.price,
         "attributes": {},
         "short_description": "",
+        "categories": [str(c.get("name", "")) for c in product_input.categories if c.get("name")],
     }
 
     try:

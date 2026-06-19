@@ -52,6 +52,7 @@ class WooService:
                         stock_status=str(raw_item.get("stock_status") or "instock"),
                         attributes=parsed.get("attributes", {}),
                         short_description=parsed.get("short_description"),
+                        categories=parsed.get("categories", []),
                     )
                 )
         return products
@@ -79,6 +80,7 @@ class WooService:
                             stock_status=str(item.get("stock_status") or "instock"),
                             attributes=parsed.get("attributes", {}),
                             short_description=parsed.get("short_description"),
+                            categories=parsed.get("categories", []),
                         )
         except Exception as e:
             logger.error("WooCommerce API Single Search Error", error=str(e), params=params)
