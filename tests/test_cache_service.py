@@ -51,7 +51,7 @@ async def test_purge_expired(mock_settings):
     await service.initialize()
 
     # Insert old record manually to bypass `set` updating `updated_at` to now
-    old_date = (datetime.now(UTC) - timedelta(days=10)).isoformat()
+    old_date = int((datetime.now(UTC) - timedelta(days=10)).timestamp())
     import aiosqlite
 
     async with aiosqlite.connect(service.db_path) as db:

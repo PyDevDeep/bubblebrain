@@ -6,14 +6,10 @@ from app.models.chat_memory import ChatMessage
 from app.services.chat_memory_service import ChatMemoryService
 
 
-@pytest.fixture
-def service():
-    return ChatMemoryService()
-
-
 @pytest.mark.asyncio
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
-async def test_get_history(mock_session_local, service):
+async def test_get_history(mock_session_local):
+    service = ChatMemoryService(session_factory=mock_session_local)
     # Arrange
     mock_session = AsyncMock()
     mock_session.add = MagicMock()
@@ -42,7 +38,8 @@ async def test_get_history(mock_session_local, service):
 
 @pytest.mark.asyncio
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
-async def test_get_history_with_reset(mock_session_local, service):
+async def test_get_history_with_reset(mock_session_local):
+    service = ChatMemoryService(session_factory=mock_session_local)
     mock_session = AsyncMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
     mock_result = MagicMock()
@@ -70,7 +67,8 @@ async def test_get_history_with_reset(mock_session_local, service):
 @pytest.mark.asyncio
 @patch("app.services.chat_memory_service.commit_with_retry")
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
-async def test_add_message(mock_session_local, mock_commit, service):
+async def test_add_message(mock_session_local, mock_commit):
+    service = ChatMemoryService(session_factory=mock_session_local)
     mock_session = AsyncMock()
     mock_session.add = MagicMock()
     mock_session.add_all = MagicMock()
@@ -85,14 +83,16 @@ async def test_add_message(mock_session_local, mock_commit, service):
 @pytest.mark.asyncio
 @patch("app.services.chat_memory_service.commit_with_retry")
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
-async def test_add_message_error(mock_session_local, mock_commit, service):
+async def test_add_message_error(mock_session_local, mock_commit):
+    service = ChatMemoryService(session_factory=mock_session_local)
     mock_session = AsyncMock()
     mock_session.add = MagicMock()
     mock_session.add_all = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
     mock_commit.side_effect = Exception("DB error")
 
-    await service.add_message("test", "user", "Hi")
+    with pytest.raises(Exception, match="DB error"):
+        await service.add_message("test", "user", "Hi")
 
     mock_session.rollback.assert_called_once()
 
@@ -100,7 +100,8 @@ async def test_add_message_error(mock_session_local, mock_commit, service):
 @pytest.mark.asyncio
 @patch("app.services.chat_memory_service.commit_with_retry")
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
-async def test_add_interaction(mock_session_local, mock_commit, service):
+async def test_add_interaction(mock_session_local, mock_commit):
+    service = ChatMemoryService(session_factory=mock_session_local)
     mock_session = AsyncMock()
     mock_session.add = MagicMock()
     mock_session.add_all = MagicMock()
@@ -115,14 +116,16 @@ async def test_add_interaction(mock_session_local, mock_commit, service):
 @pytest.mark.asyncio
 @patch("app.services.chat_memory_service.commit_with_retry")
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
-async def test_add_interaction_error(mock_session_local, mock_commit, service):
+async def test_add_interaction_error(mock_session_local, mock_commit):
+    service = ChatMemoryService(session_factory=mock_session_local)
     mock_session = AsyncMock()
     mock_session.add = MagicMock()
     mock_session.add_all = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
     mock_commit.side_effect = Exception("DB error")
 
-    await service.add_interaction("test", "Hi user", "Hi bot")
+    with pytest.raises(Exception, match="DB error"):
+        await service.add_interaction("test", "Hi user", "Hi bot")
 
     mock_session.rollback.assert_called_once()
 
@@ -130,7 +133,8 @@ async def test_add_interaction_error(mock_session_local, mock_commit, service):
 @pytest.mark.asyncio
 @patch("app.services.chat_memory_service.commit_with_retry")
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
-async def test_clear_history(mock_session_local, mock_commit, service):
+async def test_clear_history(mock_session_local, mock_commit):
+    service = ChatMemoryService(session_factory=mock_session_local)
     mock_session = AsyncMock()
     mock_session.add = MagicMock()
     mock_session.add_all = MagicMock()
@@ -145,21 +149,24 @@ async def test_clear_history(mock_session_local, mock_commit, service):
 @pytest.mark.asyncio
 @patch("app.services.chat_memory_service.commit_with_retry")
 @patch("app.services.chat_memory_service.AsyncSessionLocal")
-async def test_clear_history_error(mock_session_local, mock_commit, service):
+async def test_clear_history_error(mock_session_local, mock_commit):
+    service = ChatMemoryService(session_factory=mock_session_local)
     mock_session = AsyncMock()
     mock_session.add = MagicMock()
     mock_session.add_all = MagicMock()
     mock_session_local.return_value.__aenter__.return_value = mock_session
     mock_commit.side_effect = Exception("DB error")
 
-    await service.clear_history("test")
+    with pytest.raises(Exception, match="DB error"):
+        await service.clear_history("test")
 
     mock_session.rollback.assert_called_once()
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_memory_service.ChatMemoryService.add_message")
-async def test_reset_rag_context(mock_add_message, service):
+async def test_reset_rag_context(mock_add_message):
+    service = ChatMemoryService()
     await service.reset_rag_context("test_session")
     mock_add_message.assert_called_once_with(
         "test_session", role="system", content="---context-reset---"

@@ -15,7 +15,7 @@ def test_vector_service_init(mock_pinecone_class, mock_settings):
     # Assert
     mock_pinecone_class.assert_called_once_with(api_key="fake-pinecone-key")
     assert service.index_name == "test-index"
-    assert service.index == mock_pinecone_class.return_value.Index.return_value
+    assert service.index is None
 
 
 @patch("app.services.vector_service.Pinecone")

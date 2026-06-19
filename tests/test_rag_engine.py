@@ -90,9 +90,9 @@ async def test_process_query_success(mock_rag_engine):
     # Mock retrieve context
     mock_rag_engine.openai_service.generate_embedding.return_value = [0.1] * 1536
 
-    mock_rag_engine.vector_service.query_similar.return_value = [
-        {"metadata": {"text": "Context 1", "source": "doc1.txt"}}
-    ]
+    mock_rag_engine.vector_service.query_similar = AsyncMock(
+        return_value=[{"metadata": {"text": "Context 1", "source": "doc1.txt"}}]
+    )
 
     # Act
     response = await mock_rag_engine.process_query("What is this?")

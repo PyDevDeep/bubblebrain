@@ -1,3 +1,4 @@
+import time
 from collections.abc import AsyncGenerator, Sequence
 from typing import cast
 
@@ -12,9 +13,18 @@ from app.core.metrics import (
     llm_latency_seconds,
     llm_requests_total,
     llm_tokens_total,
+    llm_ttft_seconds,
 )
 
 logger = get_logger(__name__)
+
+# Prompt and completion cost per 1M tokens in USD
+MODEL_PRICING: dict[str, tuple[float, float]] = {
+    "gpt-4o": (5.0, 15.0),
+    "gpt-4o-mini": (0.150, 0.600),
+    "text-embedding-3-small": (0.02, 0.0),
+    "text-embedding-3-large": (0.13, 0.0),
+}
 
 
 class OpenAIService:
@@ -27,6 +37,10 @@ class OpenAIService:
         self.embedding_model = settings.embedding_model
         self.openai_model = settings.openai_model
         self.max_tokens_response = settings.max_tokens_response
+
+    def _calculate_cost(self, model: str, prompt_tokens: int, completion_tokens: int) -> float:
+        prices = MODEL_PRICING.get(model, (0.0, 0.0))
+        return (prompt_tokens * prices[0] / 1000000) + (completion_tokens * prices[1] / 1000000)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -41,17 +55,30 @@ class OpenAIService:
             raise ValueError("Input text for embedding cannot be empty")
 
         try:
-            response = await self.client.embeddings.create(
-                model=self.embedding_model,
-                input=text,
-            )
+            with llm_latency_seconds.labels(model=self.embedding_model).time():
+                response = await self.client.embeddings.create(
+                    model=self.embedding_model,
+                    input=text,
+                )
+
+            llm_requests_total.labels(model=self.embedding_model, status="success").inc()
+
+            if response.usage:
+                tokens = response.usage.prompt_tokens
+                llm_tokens_total.labels(model=self.embedding_model, token_type="prompt").inc(tokens)  # noqa: S106
+                cost = self._calculate_cost(self.embedding_model, tokens, 0)
+                if cost > 0:
+                    llm_cost_usd_total.labels(model=self.embedding_model).inc(cost)
+
             return response.data[0].embedding
-        except RateLimitError as e:
-            logger.warning("OpenAI RateLimitError during embedding generation", error=str(e))
-            raise e
-        except OpenAIError as e:
-            logger.error("OpenAI APIError during embedding generation", error=str(e))
-            raise e
+        except RateLimitError:
+            llm_requests_total.labels(model=self.embedding_model, status="rate_limit").inc()
+            logger.warning("OpenAI RateLimitError during embedding generation", exc_info=True)
+            raise
+        except OpenAIError:
+            llm_requests_total.labels(model=self.embedding_model, status="error").inc()
+            logger.error("OpenAI APIError during embedding generation", exc_info=True)
+            raise
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -68,18 +95,31 @@ class OpenAIService:
         clean_texts = [text if text.strip() else " " for text in texts]
 
         try:
-            response = await self.client.embeddings.create(
-                model=self.embedding_model,
-                input=clean_texts,
-            )
+            with llm_latency_seconds.labels(model=self.embedding_model).time():
+                response = await self.client.embeddings.create(
+                    model=self.embedding_model,
+                    input=clean_texts,
+                )
+
+            llm_requests_total.labels(model=self.embedding_model, status="success").inc()
+
+            if response.usage:
+                tokens = response.usage.prompt_tokens
+                llm_tokens_total.labels(model=self.embedding_model, token_type="prompt").inc(tokens)  # noqa: S106
+                cost = self._calculate_cost(self.embedding_model, tokens, 0)
+                if cost > 0:
+                    llm_cost_usd_total.labels(model=self.embedding_model).inc(cost)
+
             sorted_data = sorted(response.data, key=lambda x: x.index)
             return [item.embedding for item in sorted_data]
-        except RateLimitError as e:
-            logger.warning("OpenAI RateLimitError during batch embedding", error=str(e))
-            raise e
-        except OpenAIError as e:
-            logger.error("OpenAI APIError during batch embedding", error=str(e))
-            raise e
+        except RateLimitError:
+            llm_requests_total.labels(model=self.embedding_model, status="rate_limit").inc()
+            logger.warning("OpenAI RateLimitError during batch embedding", exc_info=True)
+            raise
+        except OpenAIError:
+            llm_requests_total.labels(model=self.embedding_model, status="error").inc()
+            logger.error("OpenAI APIError during batch embedding", exc_info=True)
+            raise
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -98,11 +138,9 @@ class OpenAIService:
         """
         context_text = "\n\n".join(context_chunks)
 
-        try:
-            # Substitute the context into the {context} placeholder
-            formatted_system_prompt = system_prompt.format(context=context_text)
-        except KeyError:
-            # Fallback if the prompt does not contain a placeholder
+        if "{context}" in system_prompt:
+            formatted_system_prompt = system_prompt.replace("{context}", context_text)
+        else:
             formatted_system_prompt = f"{system_prompt}\n\nContext:\n{context_text}"
 
         messages = [
@@ -137,20 +175,20 @@ class OpenAIService:
                     c_tokens
                 )
 
-                # Approximate cost (based on typical gpt-4o rates for now)
-                cost = (p_tokens * 5.0 / 1000000) + (c_tokens * 15.0 / 1000000)
-                llm_cost_usd_total.labels(model=self.openai_model).inc(cost)
+                cost = self._calculate_cost(self.openai_model, p_tokens, c_tokens)
+                if cost > 0:
+                    llm_cost_usd_total.labels(model=self.openai_model).inc(cost)
 
             content = response.choices[0].message.content
             return content if content else ""
-        except RateLimitError as e:
+        except RateLimitError:
             llm_requests_total.labels(model=self.openai_model, status="rate_limit").inc()
-            logger.warning("OpenAI RateLimitError during chat completion", error=str(e))
-            raise e
-        except OpenAIError as e:
+            logger.warning("OpenAI RateLimitError during chat completion", exc_info=True)
+            raise
+        except OpenAIError:
             llm_requests_total.labels(model=self.openai_model, status="error").inc()
-            logger.error("OpenAI APIError during chat completion", error=str(e))
-            raise e
+            logger.error("OpenAI APIError during chat completion", exc_info=True)
+            raise
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -166,9 +204,9 @@ class OpenAIService:
         """
         context_text = "\n\n".join(context_chunks)
 
-        try:
-            formatted_system_prompt = system_prompt.format(context=context_text)
-        except KeyError:
+        if "{context}" in system_prompt:
+            formatted_system_prompt = system_prompt.replace("{context}", context_text)
+        else:
             formatted_system_prompt = f"{system_prompt}\n\nContext:\n{context_text}"
 
         messages = [
@@ -178,26 +216,34 @@ class OpenAIService:
 
         try:
             llm_requests_total.labels(model=self.openai_model, status="success").inc()
-            with llm_latency_seconds.labels(model=self.openai_model).time():
-                stream = cast(
-                    AsyncStream[ChatCompletionChunk],
-                    await self.client.chat.completions.create(
-                        model=self.openai_model,
-                        messages=messages,  # type: ignore
-                        max_tokens=self.max_tokens_response,
-                        temperature=0.7,
-                        stream=True,
-                    ),
-                )
 
-                async for chunk in stream:
-                    if chunk.choices and chunk.choices[0].delta.content is not None:
-                        yield chunk.choices[0].delta.content
-        except RateLimitError as e:
+            start_time = time.time()
+            first_token_received = False
+
+            stream = cast(
+                AsyncStream[ChatCompletionChunk],
+                await self.client.chat.completions.create(
+                    model=self.openai_model,
+                    messages=messages,  # type: ignore
+                    max_tokens=self.max_tokens_response,
+                    temperature=0.7,
+                    stream=True,
+                ),
+            )
+
+            async for chunk in stream:
+                if not first_token_received:
+                    ttft = time.time() - start_time
+                    llm_ttft_seconds.labels(model=self.openai_model).observe(ttft)
+                    first_token_received = True
+
+                if chunk.choices and chunk.choices[0].delta.content is not None:
+                    yield chunk.choices[0].delta.content
+        except RateLimitError:
             llm_requests_total.labels(model=self.openai_model, status="rate_limit").inc()
-            logger.warning("OpenAI RateLimitError during stream chat completion", error=str(e))
-            raise e
-        except OpenAIError as e:
+            logger.warning("OpenAI RateLimitError during stream chat completion", exc_info=True)
+            raise
+        except OpenAIError:
             llm_requests_total.labels(model=self.openai_model, status="error").inc()
-            logger.error("OpenAI APIError during stream chat completion", error=str(e))
-            raise e
+            logger.error("OpenAI APIError during stream chat completion", exc_info=True)
+            raise

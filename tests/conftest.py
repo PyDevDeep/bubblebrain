@@ -50,7 +50,8 @@ def mock_settings(tmp_path):
     settings.pinecone_api_key = mock_secret_pinecone
     settings.pinecone_environment = "test-env"
     settings.pinecone_index_name = "test-index"
-    settings.vector_dimension = 1536
+    settings.pinecone_dimension = 1536
+    settings.pinecone_metric = "cosine"
 
     # Scraper
     settings.euro_rate = 40.0

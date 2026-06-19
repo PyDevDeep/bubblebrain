@@ -15,6 +15,10 @@ llm_latency_seconds = Histogram(
     "llm_latency_seconds", "Latency of LLM requests in seconds", ["model"]
 )
 
+llm_ttft_seconds = Histogram(
+    "llm_ttft_seconds", "Time to first token for streaming LLM requests", ["model"]
+)
+
 llm_cost_usd_total = Counter(
     "llm_cost_usd_total", "Total estimated cost of LLM requests in USD", ["model"]
 )

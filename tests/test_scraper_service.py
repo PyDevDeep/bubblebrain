@@ -21,12 +21,12 @@ async def test_scrape_supplier_success(mock_client_class, mock_settings):
     </html>
     """
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_client_class.return_value = mock_client
     mock_response = Mock()
     mock_response.status_code = 200
     mock_response.text = html_content
     mock_response.url = "https://supplier.sk/"
-    mock_client.get.return_value = mock_response
+    mock_client.get = AsyncMock(return_value=mock_response)
 
     service = ScraperService(mock_settings)
 
@@ -47,10 +47,10 @@ async def test_scrape_supplier_success(mock_client_class, mock_settings):
 @patch("app.services.scraper_service.httpx.AsyncClient")
 async def test_scrape_supplier_not_found(mock_client_class, mock_settings):
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_client_class.return_value = mock_client
     mock_response = Mock()
     mock_response.status_code = 404
-    mock_client.get.return_value = mock_response
+    mock_client.get = AsyncMock(return_value=mock_response)
 
     service = ScraperService(mock_settings)
     res = await service.scrape_supplier("Test")
@@ -61,8 +61,8 @@ async def test_scrape_supplier_not_found(mock_client_class, mock_settings):
 @patch("app.services.scraper_service.httpx.AsyncClient")
 async def test_scrape_supplier_timeout(mock_client_class, mock_settings):
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
-    mock_client.get.side_effect = httpx.TimeoutException("Timeout")
+    mock_client_class.return_value = mock_client
+    mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
 
     service = ScraperService(mock_settings)
     res = await service.scrape_supplier("Test")
@@ -81,12 +81,12 @@ async def test_scrape_hotline_success(mock_client_class, mock_settings):
     </html>
     """
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_client_class.return_value = mock_client
     mock_response = Mock()
     mock_response.status_code = 200
     mock_response.text = html_content
     mock_response.url = "https://hotline.ua/product"
-    mock_client.get.return_value = mock_response
+    mock_client.get = AsyncMock(return_value=mock_response)
 
     service = ScraperService(mock_settings)
 
@@ -112,12 +112,12 @@ async def test_scrape_hotline_fallback_regex(mock_client_class, mock_settings):
     </html>
     """
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_client_class.return_value = mock_client
     mock_response = Mock()
     mock_response.status_code = 200
     mock_response.text = html_content
     mock_response.url = "https://hotline.ua/product"
-    mock_client.get.return_value = mock_response
+    mock_client.get = AsyncMock(return_value=mock_response)
 
     service = ScraperService(mock_settings)
 
@@ -149,12 +149,12 @@ async def test_scrape_supplier_multi(mock_client_class, mock_settings):
     </html>
     """
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_client_class.return_value = mock_client
     mock_response = Mock()
     mock_response.status_code = 200
     mock_response.text = html_content
     mock_response.url = "https://supplier.sk/"
-    mock_client.get.return_value = mock_response
+    mock_client.get = AsyncMock(return_value=mock_response)
 
     service = ScraperService(mock_settings)
 

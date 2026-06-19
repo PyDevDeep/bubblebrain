@@ -27,10 +27,10 @@ def mock_settings_missing():
 async def test_send_alert_success(mock_client_class, mock_settings):
     # Arrange
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_client_class.return_value = mock_client
     mock_response = Mock()
     mock_response.status_code = 200
-    mock_client.post.return_value = mock_response
+    mock_client.post = AsyncMock(return_value=mock_response)
 
     service = TelegramService(mock_settings)
 
@@ -47,7 +47,7 @@ async def test_send_alert_success(mock_client_class, mock_settings):
 async def test_send_alert_retries(mock_client_class, mock_settings):
     # Arrange
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_client_class.return_value = mock_client
 
     # Fail twice, succeed on third
     resp_fail = Mock()
@@ -55,7 +55,7 @@ async def test_send_alert_retries(mock_client_class, mock_settings):
     resp_ok = Mock()
     resp_ok.status_code = 200
 
-    mock_client.post.side_effect = [resp_fail, resp_fail, resp_ok]
+    mock_client.post = AsyncMock(side_effect=[resp_fail, resp_fail, resp_ok])
 
     service = TelegramService(mock_settings)
 
@@ -81,10 +81,10 @@ async def test_send_alert_missing_creds(mock_settings_missing):
 async def test_send_lead_success(mock_client_class, mock_settings):
     # Arrange
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_client_class.return_value = mock_client
     mock_response = Mock()
     mock_response.status_code = 200
-    mock_client.post.return_value = mock_response
+    mock_client.post = AsyncMock(return_value=mock_response)
 
     service = TelegramService(mock_settings)
     lead = LeadData(name="Test & Co", phone="+380000000000")
@@ -107,8 +107,8 @@ async def test_send_lead_success(mock_client_class, mock_settings):
 @patch("app.services.telegram_service.httpx.AsyncClient")
 async def test_send_lead_error(mock_client_class, mock_settings):
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
-    mock_client.post.side_effect = Exception("Network error")
+    mock_client_class.return_value = mock_client
+    mock_client.post = AsyncMock(side_effect=Exception("Network error"))
 
     service = TelegramService(mock_settings)
 

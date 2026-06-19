@@ -7,10 +7,10 @@ from app.services.woo_service import WooService
 
 
 @pytest.mark.asyncio
-@patch("app.services.woo_service.httpx.AsyncClient")
-async def test_search_product_async_success(mock_client_class, mock_settings):
+@patch("app.services.woo_service.WooService._get_client")
+async def test_search_product_async_success(mock_get_client, mock_settings):
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client.return_value = mock_client
 
     mock_response = Mock()
     mock_response.status_code = 200
@@ -23,7 +23,7 @@ async def test_search_product_async_success(mock_client_class, mock_settings):
             "stock_status": "instock",
         }
     ]
-    mock_client.get.return_value = mock_response
+    mock_client.get = AsyncMock(return_value=mock_response)
 
     service = WooService(mock_settings)
     res = await service.search_product_async("TEST1", category_id=1)
@@ -34,10 +34,10 @@ async def test_search_product_async_success(mock_client_class, mock_settings):
 
 
 @pytest.mark.asyncio
-@patch("app.services.woo_service.httpx.AsyncClient")
-async def test_search_product_async_fallback_sku(mock_client_class, mock_settings):
+@patch("app.services.woo_service.WooService._get_client")
+async def test_search_product_async_fallback_sku(mock_get_client, mock_settings):
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client.return_value = mock_client
 
     resp_empty = Mock()
     resp_empty.status_code = 200
@@ -47,7 +47,7 @@ async def test_search_product_async_fallback_sku(mock_client_class, mock_setting
     resp_ok.status_code = 200
     resp_ok.json.return_value = [{"sku": "TEST1", "name": "Prod", "price": "100"}]
 
-    mock_client.get.side_effect = [resp_empty, resp_ok]
+    mock_client.get = AsyncMock(side_effect=[resp_empty, resp_ok])
 
     service = WooService(mock_settings)
     res = await service.search_product_async("TEST1")
@@ -57,10 +57,10 @@ async def test_search_product_async_fallback_sku(mock_client_class, mock_setting
 
 
 @pytest.mark.asyncio
-@patch("app.services.woo_service.httpx.AsyncClient")
-async def test_search_products_async_success(mock_client_class, mock_settings):
+@patch("app.services.woo_service.WooService._get_client")
+async def test_search_products_async_success(mock_get_client, mock_settings):
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client.return_value = mock_client
 
     mock_response = Mock()
     mock_response.status_code = 200
@@ -68,7 +68,7 @@ async def test_search_products_async_success(mock_client_class, mock_settings):
         {"sku": "1", "name": "P1", "price": "10"},
         {"sku": "2", "name": "P2", "price": "20"},
     ]
-    mock_client.get.return_value = mock_response
+    mock_client.get = AsyncMock(return_value=mock_response)
 
     service = WooService(mock_settings)
     res = await service.search_products_async("Test")
@@ -77,15 +77,15 @@ async def test_search_products_async_success(mock_client_class, mock_settings):
 
 
 @pytest.mark.asyncio
-@patch("app.services.woo_service.httpx.AsyncClient")
-async def test_search_products_by_category_async_success(mock_client_class, mock_settings):
+@patch("app.services.woo_service.WooService._get_client")
+async def test_search_products_by_category_async_success(mock_get_client, mock_settings):
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client.return_value = mock_client
 
     mock_response = Mock()
     mock_response.status_code = 200
     mock_response.json.return_value = [{"sku": "1", "name": "P1", "price": "10"}]
-    mock_client.get.return_value = mock_response
+    mock_client.get = AsyncMock(return_value=mock_response)
 
     service = WooService(mock_settings)
     res = await service.search_products_by_category_async(1)
@@ -94,11 +94,11 @@ async def test_search_products_by_category_async_success(mock_client_class, mock
 
 
 @pytest.mark.asyncio
-@patch("app.services.woo_service.httpx.AsyncClient")
-async def test_woo_service_timeout(mock_client_class, mock_settings):
+@patch("app.services.woo_service.WooService._get_client")
+async def test_woo_service_timeout(mock_get_client, mock_settings):
     mock_client = AsyncMock()
-    mock_client_class.return_value.__aenter__.return_value = mock_client
-    mock_client.get.side_effect = httpx.TimeoutException("Timeout")
+    mock_get_client.return_value = mock_client
+    mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
 
     service = WooService(mock_settings)
     res = await service.search_product_async("Test")

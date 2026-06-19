@@ -18,6 +18,7 @@ async def test_generate_embedding(mock_async_openai_class, mock_settings):
     service.client = mock_client
 
     mock_response = MagicMock()
+    mock_response.usage.prompt_tokens = 5
     mock_data = MagicMock()
     mock_data.embedding = [0.1, 0.2, 0.3]
     mock_response.data = [mock_data]
