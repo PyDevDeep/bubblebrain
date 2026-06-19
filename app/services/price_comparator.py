@@ -141,7 +141,7 @@ class PriceComparator:
         if woo_result.price_uah and supp_price_uah:
             diff_woo = round(woo_result.price_uah - supp_price_uah, 2)
 
-            if diff_woo < self.margin_threshold or diff_woo > self.margin_threshold:
+            if abs(diff_woo) > self.margin_threshold:
                 needs_alert = True
                 alert_reason = "checkout_margin_issue" if is_checkout else "low_margin"
                 price_alerts_total.inc()
