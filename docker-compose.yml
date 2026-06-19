@@ -21,7 +21,7 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--web.external-url=https://alliases.duckdns.org/BubbleBrain/prometheus/'
+      - '--web.external-url=${PROMETHEUS_EXTERNAL_URL}'
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:

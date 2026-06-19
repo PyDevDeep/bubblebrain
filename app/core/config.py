@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     pinecone_api_key: SecretStr
     pinecone_environment: str
     pinecone_index_name: str = "chatbot-index"
+    pinecone_dimension: int = 1536
+    pinecone_metric: str = "cosine"
 
     api_key_secret: SecretStr
     sentry_dsn: str = ""
@@ -24,6 +26,8 @@ class Settings(BaseSettings):
 
     cache_ttl_days: int = 7
     cache_db_path: str = "cache.db"
+
+    prometheus_url: str = "http://prometheus:9090/api/v1/query"
 
     woo_ck: str = ""
     woo_cs: str = ""
