@@ -30,7 +30,7 @@ chat_router = APIRouter()
 
 
 @lru_cache
-def _get_cached_rag_engine() -> RAGEngine:
+def get_cached_rag_engine() -> RAGEngine:
     """Get cached instance of RAG engine."""
     settings = get_settings()
     openai_service = OpenAIService(settings)
@@ -59,8 +59,8 @@ def _get_cached_rag_engine() -> RAGEngine:
 
 
 def get_rag_engine() -> RAGEngine:
-    """Get RAG engine instance."""
-    return _get_cached_rag_engine()
+    """Dependency injection for RAGEngine."""
+    return get_cached_rag_engine()
 
 
 @chat_router.post("", response_model=ChatResponse)

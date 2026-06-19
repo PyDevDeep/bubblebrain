@@ -93,6 +93,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # on_shutdown
     logger.info("Application shutting down")
     scheduler.shutdown(wait=False)  # type: ignore
+
+    # Close HTTP clients
+    from app.api.v1.endpoints.chat import get_cached_rag_engine
+
+    rag_engine = get_cached_rag_engine()
+    # Pylance does not know that RAGEngine has price_comparator with scraper_service due to lack of type hints
+    # but at runtime this is correct. We can just use # type: ignore to satisfy Pylance
+    await rag_engine.price_comparator.scraper_service.close()  # type: ignore
+
+    from app.services.woo_service import close_woo_client
+
+    await close_woo_client()
+
     if settings.sentry_dsn:
         sentry_sdk.flush()
 

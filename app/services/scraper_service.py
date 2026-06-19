@@ -27,66 +27,31 @@ class ScraperService:
         }
         # Hard timeout for parsing
         self.timeout = httpx.Timeout(SCRAPER_TIMEOUT_DEFAULT, connect=SCRAPER_TIMEOUT_CONNECT)
+        self.client = httpx.AsyncClient(
+            timeout=self.timeout, follow_redirects=True, headers=self.headers
+        )
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client."""
+        await self.client.aclose()
 
     async def _fetch_html(self, url: str) -> httpx.Response | None:
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
-            try:
-                resp = await client.get(url, headers=self.headers)
-                if resp.status_code == 200:
-                    return resp
-                return None
-            except httpx.TimeoutException:
-                logger.error("Scraper fetch timeout", url=url)
-                return None
-            except httpx.RequestError as e:
-                logger.error("Scraper fetch error", error=str(e), url=url)
-                return None
+        try:
+            resp = await self.client.get(url)
+            if resp.status_code == 200:
+                return resp
+            return None
+        except httpx.TimeoutException:
+            logger.error("Scraper fetch timeout", url=url)
+            return None
+        except httpx.RequestError:
+            logger.exception("Scraper fetch error", url=url)
+            return None
 
     async def scrape_supplier(self, search_term: str) -> SupplierProduct | None:
-        base_url = self.supplier_url.rstrip("/")
-        url = f"{base_url}/default.asp?cls=stoitems&fulltext=" + urllib.parse.quote(search_term)
-        resp = await self._fetch_html(url)
-        if not resp:
-            return None
-
-        try:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            name_node = soup.find("a", class_="stiplname")
-            if not name_node:
-                return None
-
-            name = name_node.get_text(strip=True)
-            href_attr = name_node.get("href")
-            href_str = str(href_attr) if href_attr is not None else ""
-            link = f"{base_url}/" + href_str if name_node.has_attr("href") else str(resp.url)
-
-            price_node = soup.find("div", class_="wvat")
-            price = None
-            if price_node:
-                price_str = price_node.get_text(strip=True)
-                price_str = re.sub(r"[^\d,.]", "", price_str)
-                price_str = price_str.replace(",", ".")
-                if price_str:
-                    price = float(price_str)
-
-            stock_node = soup.select_one(".availability .stock")
-            inet_node = soup.select_one("div.availability.inet")
-
-            availability: list[str] = []
-            if stock_node and stock_node.get_text(strip=True):
-                availability.append(stock_node.get_text(strip=True))
-            if inet_node and inet_node.get_text(strip=True):
-                availability.append(inet_node.get_text(strip=True))
-
-            stock = " | ".join(availability) if availability else "Невідомо"
-            price_uah = round(price * self.euro_rate, 2) if price else None
-
-            return SupplierProduct(
-                name=name, price_eur=price, price_uah=price_uah, availability_status=stock, url=link
-            )
-        except Exception as e:
-            logger.error("Error parsing Supplier HTML", error=str(e), search_term=search_term)
-            return None
+        """Search supplier using single item fallback to multi API."""
+        products = await self.scrape_supplier_multi(search_term, limit=1)
+        return products[0] if products else None
 
     async def scrape_hotline(self, search_term: str) -> HotlineProduct | None:
         url = "https://hotline.ua/sr/?q=" + urllib.parse.quote(search_term)
@@ -95,28 +60,29 @@ class ScraperService:
             return None
 
         try:
-            soup = BeautifulSoup(resp.text, "html.parser")
+            soup = BeautifulSoup(resp.text, "lxml")
             price_node = soup.find(class_=re.compile("(many__price-sum|price__value|price-value)"))
 
             raw_price = None
             if price_node:
                 raw_price = price_node.get_text(strip=True)
             else:
-                matches = re.findall(
+                patterns = [
                     r"(\d{1,3}(?:[ \xA0]\d{3})*(?:,\d{2})?)\s*(?:–|-)\s*(\d{1,3}(?:[ \xA0]\d{3})*(?:,\d{2})?)\s*₴",
-                    resp.text,
-                    re.IGNORECASE,
-                )
-                if matches:
-                    raw_price = matches[0][0] + " – " + matches[0][1] + " ₴"
-                else:
-                    matches2 = re.findall(
-                        r"(\d{1,3}(?:[ \xA0]\d{3})*(?:,\d{2})?)\s*₴", resp.text, re.IGNORECASE
-                    )
-                    if matches2:
-                        raw_price = matches2[0] + " ₴"
-                    else:
-                        return None
+                    r"(\d{1,3}(?:[ \xA0]\d{3})*(?:,\d{2})?)\s*₴",
+                ]
+                for p in patterns:
+                    matches = re.findall(p, resp.text, re.IGNORECASE)
+                    if matches:
+                        match = matches[0]
+                        if isinstance(match, tuple):
+                            raw_price = f"{match[0]} – {match[1]} ₴"
+                        else:
+                            raw_price = f"{match} ₴"
+                        break
+
+                if not raw_price:
+                    return None
 
             clean_price = re.sub(r"[\s\xA0\t\n\r]", "", raw_price)
             clean_price = clean_price.replace("&nbsp;", "")
@@ -130,8 +96,8 @@ class ScraperService:
                 )
 
             return None
-        except Exception as e:
-            logger.error("Error parsing Hotline HTML", error=str(e), search_term=search_term)
+        except Exception:
+            logger.exception("Error parsing Hotline HTML", search_term=search_term)
             return None
 
     async def scrape_supplier_multi(
@@ -144,7 +110,7 @@ class ScraperService:
             return []
 
         try:
-            soup = BeautifulSoup(resp.text, "html.parser")
+            soup = BeautifulSoup(resp.text, "lxml")
             name_nodes = soup.find_all("a", class_="stiplname")
             if not name_nodes:
                 return []
@@ -199,6 +165,6 @@ class ScraperService:
                 )
 
             return products
-        except Exception as e:
-            logger.error("Error parsing Supplier Multi HTML", error=str(e), search_term=search_term)
+        except Exception:
+            logger.exception("Error parsing Supplier Multi HTML", search_term=search_term)
             return []
