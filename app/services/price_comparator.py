@@ -85,6 +85,7 @@ class PriceComparator:
                 woo_url=woo_result.url,
                 attributes=woo_result.attributes,
                 short_description=woo_result.short_description,
+                categories=woo_result.categories,
             )
 
         supp_price_uah = None
@@ -169,4 +170,5 @@ class PriceComparator:
             woo_url=woo_result.url,
             attributes=woo_result.attributes,
             short_description=woo_result.short_description,
+            categories=woo_result.categories,
         )

@@ -9,6 +9,7 @@ class WooProduct(BaseModel):
     stock_status: str | None = "instock"
     attributes: dict[str, str] = {}
     short_description: str | None = None
+    categories: list[str] = []
 
 
 class SupplierProduct(BaseModel):
@@ -39,3 +40,4 @@ class PriceComparisonResult(BaseModel):
     woo_url: str | None = None
     attributes: dict[str, str] = {}
     short_description: str | None = None
+    categories: list[str] = []

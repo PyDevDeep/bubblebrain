@@ -11,6 +11,8 @@ from app.core.constants import (
     BTN_CHANGE_PRICE,
     BTN_VIEW_PRODUCT,
     INTENT_CHECKOUT,
+    INTENT_HYBRID,
+    INTENT_PRODUCT,
     INTENT_SEARCH,
     LINK_CHECKOUT,
     LINK_TELEGRAM,
@@ -31,6 +33,7 @@ from app.utils.prompts import (
     INSTR_NOTHING_FOUND,
     INSTR_PRICE_CHECKING,
     INSTR_PRICE_DISCLAIMER,
+    INSTR_PRODUCT_CONTEXT,
     INSTR_PRODUCT_FOUND,
 )
 from app.utils.url_helpers import add_tracking_params
@@ -91,6 +94,8 @@ class ProductCheckoutIntentHandler:
 
         # Move the characteristics formatting into a separate block so they are always available
         attributes_facts: list[str] = []
+        if result.categories:
+            attributes_facts.append(f"Categories: {', '.join(result.categories)}")
         if result.attributes:
             attr_str = "\n".join(f"- {k}: {v}" for k, v in result.attributes.items())
             attributes_facts.append(f"Characteristics:\n{attr_str}")
@@ -199,9 +204,14 @@ class ProductCheckoutIntentHandler:
                         }
                     )
 
-                system_instructions.append(
-                    INSTR_PRODUCT_FOUND.format(product_name=result.product_name)
-                )
+                if intent_type in [INTENT_HYBRID, INTENT_PRODUCT]:
+                    system_instructions.append(
+                        INSTR_PRODUCT_CONTEXT.format(product_name=result.product_name)
+                    )
+                else:
+                    system_instructions.append(
+                        INSTR_PRODUCT_FOUND.format(product_name=result.product_name)
+                    )
                 system_instructions.append(INSTR_PRICE_DISCLAIMER)
 
                 status_text = (
