@@ -52,7 +52,7 @@ jobs:
         run: poetry run pyright
 
       - name: Run Unit Tests
-        run: poetry run pytest
+        run: poetry run pytest -m "not remote"
 
 #   build-and-push:
 #     needs: test-and-scan
