@@ -119,7 +119,11 @@ async def gather_and_send_daily_report_job() -> None:
         msg_lines.append("")
         msg_lines.append("🏷 <b>Джерела / Мітки (від усього):</b>")
         total_orders = woo_stats.get("total", 1) or 1
-        for tag, count in tags.items():
+
+        # Sort tags by count descending
+        sorted_tags = sorted(tags.items(), key=lambda item: item[1], reverse=True)
+
+        for tag, count in sorted_tags:
             pct = (count / total_orders) * 100
             msg_lines.append(f"   - {tag}: {count} ({pct:.1f}%)")
 

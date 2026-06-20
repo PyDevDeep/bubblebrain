@@ -201,10 +201,28 @@ class WooService:
                         meta_data = cast(list[dict[str, Any]], meta_data_raw)
                         for meta in meta_data:
                             key = str(meta.get("key", ""))
-                            if key in ("utm_source", "source", "bot_tag", "created_via"):
-                                val = str(meta.get("value", "")).strip().lower()
-                                if val:
-                                    tags[val] = tags.get(val, 0) + 1
+                            val = str(meta.get("value", "")).strip()
+                            if not val:
+                                continue
+
+                            tag_name = None
+                            if key in ("utm_source", "source", "_wc_order_attribution_utm_source"):
+                                tag_name = f"Джерело: {val.lower()}"
+                            elif key in ("bot_tag", "created_via"):
+                                tag_name = f"Створено: {val.lower()}"
+                            elif key == "_wc_order_attribution_utm_campaign":
+                                tag_name = f"Кампанія: {val}"
+                            elif key == "_wc_order_attribution_utm_medium":
+                                tag_name = f"Канал: {val.lower()}"
+                            elif key == "_wc_order_attribution_referrer":
+                                if val.startswith("http"):
+                                    from urllib.parse import urlparse
+
+                                    val = urlparse(val).netloc
+                                tag_name = f"Реферер: {val}"
+
+                            if tag_name:
+                                tags[tag_name] = tags.get(tag_name, 0) + 1
         except Exception as e:
             logger.error("WooCommerce API Orders Stats Error", error=str(e))
 
