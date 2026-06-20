@@ -35,7 +35,6 @@ async def upload_document(
     openai_service: OpenAIService = Depends(get_openai_service),
     vector_service: VectorService = Depends(get_vector_service),
 ) -> IngestResponse:
-
     filename = file.filename or "unknown"
     logger.info("Starting document ingestion", filename=filename)
 
@@ -88,7 +87,6 @@ async def upload_text(
     openai_service: OpenAIService = Depends(get_openai_service),
     vector_service: VectorService = Depends(get_vector_service),
 ) -> IngestResponse:
-
     logger.info("Starting text ingestion")
     document_id = generate_document_id("raw_text")
     chunks = chunk_text(payload.text)
