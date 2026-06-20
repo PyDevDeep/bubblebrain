@@ -128,3 +128,78 @@ def parse_product(raw_product: dict[str, Any] | None, max_desc_length: int = 400
         )
 
     return clean_data
+
+
+def parse_order(raw_order: dict[str, Any] | None) -> dict[str, Any]:
+    """
+    Cleans and structures raw WooCommerce order data for further use (e.g., in LLM).
+    """
+    if not isinstance(raw_order, dict):
+        logger.warning("Smart Parser received invalid order input: expected dict")
+        return {}
+
+    try:
+        from app.schemas.order import WooOrder, WooOrderBilling, WooOrderLineItem, WooOrderShipping
+
+        billing_raw = dict(raw_order.get("billing") or {})
+        billing = WooOrderBilling(
+            first_name=str(billing_raw.get("first_name", "")),
+            last_name=str(billing_raw.get("last_name", "")),
+            phone=str(billing_raw.get("phone", "")),
+        )
+        from typing import cast
+
+        shipping_lines: list[WooOrderShipping] = []
+        raw_shipping = raw_order.get("shipping_lines")
+        if isinstance(raw_shipping, list):
+            shipping_list = cast(list[Any], raw_shipping)
+            for sl_item in shipping_list:
+                if isinstance(sl_item, dict):
+                    sl_dict = cast(dict[str, Any], sl_item)
+                    meta_data = sl_dict.get("meta_data")
+                    meta_data_list = (
+                        cast(list[Any], meta_data) if isinstance(meta_data, list) else []
+                    )
+                    shipping_lines.append(
+                        WooOrderShipping(
+                            method_title=str(sl_dict.get("method_title", "")),
+                            meta_data=meta_data_list,
+                        )
+                    )
+
+        line_items: list[WooOrderLineItem] = []
+        raw_items = raw_order.get("line_items")
+        if isinstance(raw_items, list):
+            items_list = cast(list[Any], raw_items)
+            for li_item in items_list:
+                if isinstance(li_item, dict):
+                    li_dict = cast(dict[str, Any], li_item)
+                    line_items.append(
+                        WooOrderLineItem(
+                            name=str(li_dict.get("name", "")),
+                            quantity=int(li_dict.get("quantity", 0)),
+                            price=float(li_dict.get("price", 0.0)),
+                            total=float(li_dict.get("total", 0.0)),
+                            sku=str(li_dict.get("sku", "")),
+                        )
+                    )
+
+        order = WooOrder(
+            id=int(raw_order.get("id", 0)),
+            status=str(raw_order.get("status", "")),
+            total=float(raw_order.get("total", 0.0)),
+            currency=str(raw_order.get("currency", "UAH")),
+            date_created=str(raw_order.get("date_created", "")),
+            billing=billing,
+            payment_method_title=str(raw_order.get("payment_method_title", "")),
+            shipping_lines=shipping_lines,
+            line_items=line_items,
+        )
+        return order.model_dump()
+    except Exception as e:
+        logger.error(
+            "Smart Parser crashed on order",
+            order_id=raw_order.get("id") if raw_order else None,
+            error=str(e),
+        )
+        return {}

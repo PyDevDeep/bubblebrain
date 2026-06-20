@@ -20,6 +20,7 @@ from app.core.constants import (
     INTENT_FAQ,
     INTENT_GENERAL,
     INTENT_HYBRID,
+    INTENT_ORDER_STATUS,
     INTENT_PRODUCT,
     INTENT_SEARCH,
     LINK_TELEGRAM,
@@ -45,7 +46,11 @@ from app.schemas.chat import (
 from app.services.category_manager import CategoryManager
 from app.services.chat_memory_service import ChatMemoryService
 from app.services.guardrails_service import GuardrailsService
-from app.services.intent_handlers import ProductCheckoutIntentHandler, SearchIntentHandler
+from app.services.intent_handlers import (
+    OrderStatusIntentHandler,
+    ProductCheckoutIntentHandler,
+    SearchIntentHandler,
+)
 from app.services.openai_service import OpenAIService
 from app.services.price_comparator import PriceComparator
 from app.services.telegram_service import TelegramService
@@ -92,6 +97,9 @@ class RAGEngine:
             price_comparator=price_comparator, telegram_service=telegram_service, settings=settings
         )
         self.search_intent_handler = SearchIntentHandler(price_comparator=price_comparator)
+        self.order_status_intent_handler = OrderStatusIntentHandler(
+            woo_service=price_comparator.woo_service
+        )
 
     async def detect_intent(self, question: str, history_context: str) -> dict[str, Any]:
         """
@@ -155,6 +163,7 @@ class RAGEngine:
             intent_hybrid=INTENT_HYBRID,
             intent_general=INTENT_GENERAL,
             intent_contact=INTENT_CONTACT,
+            intent_order_status=INTENT_ORDER_STATUS,
         )
 
         try:
@@ -300,6 +309,18 @@ class RAGEngine:
                 {"text": LINK_TELEGRAM, "url": self.settings.telegram_contact_url}
             )
             extracted_links.append({"text": LINK_VIBER, "url": self.settings.viber_contact_url})
+
+        elif intent_type == INTENT_ORDER_STATUS:
+            res = await self.order_status_intent_handler.handle(
+                intent_data=intent_data,
+                system_instructions=system_instructions,
+                product_facts=product_facts,
+            )
+            product_facts = res.product_facts
+            system_instructions = res.system_instructions
+            extracted_links = res.extracted_links
+            requires_lead = res.requires_lead
+            lead_form_type = res.lead_form_type
 
         return IntentContextResult(
             product_facts=product_facts,

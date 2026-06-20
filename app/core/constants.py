@@ -61,6 +61,7 @@ INTENT_HYBRID = "hybrid"
 INTENT_FAQ = "faq"
 INTENT_GENERAL = "general"
 INTENT_CONTACT = "contact"
+INTENT_ORDER_STATUS = "order_status"
 
 # --- Regex Patterns ---
 REGEX_PHONE = r"(?:\+380|380|0)\d{9}"

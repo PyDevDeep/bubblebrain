@@ -381,3 +381,90 @@ class SearchIntentHandler:
             requires_lead=requires_lead,
             lead_form_type=lead_form_type,
         )
+
+
+class OrderStatusIntentHandler:
+    """Handler for order status intent."""
+
+    def __init__(self, woo_service: Any):
+        self.woo_service = woo_service
+
+    async def handle(
+        self,
+        intent_data: dict[str, Any],
+        system_instructions: list[str],
+        product_facts: list[str],
+    ) -> IntentContextResult:
+        order_id_str = str(intent_data.get("strict_query") or "").strip()
+
+        # Витягуємо лише цифри, якщо LLM додала текст
+        import re
+
+        match = re.search(r"\d+", order_id_str)
+        if match:
+            order_id_str = match.group(0)
+
+        if not order_id_str or not order_id_str.isdigit():
+            system_instructions.append(
+                "Не вдалося визначити номер замовлення. Попроси клієнта вказати точний номер замовлення (тільки цифри)."
+            )
+            return IntentContextResult(
+                product_facts=product_facts,
+                system_instructions=system_instructions,
+                extracted_links=[],
+                requires_lead=False,
+                lead_form_type=None,
+                new_intent_type=None,
+            )
+
+        order_id = int(order_id_str)
+        try:
+            order_data = await self.woo_service.get_order_async(order_id)
+        except Exception as e:
+            logger.exception("WooCommerce order fetch failed", extra={"error": str(e)})
+            order_data = None
+
+        if not order_data:
+            system_instructions.append(
+                f"Замовлення з номером {order_id} не знайдено. Перепроси та спитай, чи можливо клієнт помилився цифрою або номером."
+            )
+        else:
+            status_map = {
+                "pending": "Очікує оплати",
+                "processing": "В обробці",
+                "on-hold": "На утриманні",
+                "completed": "Виконано",
+                "cancelled": "Скасовано",
+                "refunded": "Повернено",
+                "failed": "Не вдалося",
+            }
+            raw_status = str(order_data.get("status", ""))
+            status_ua = status_map.get(raw_status, raw_status)
+
+            fact = f"Замовлення #{order_data.get('id')}. Статус: {status_ua}. Дата створення: {order_data.get('date_created')}. Сума: {order_data.get('total')} {order_data.get('currency')}."
+            fact += f" Спосіб оплати: {order_data.get('payment_method_title')}."
+
+            shipping = order_data.get("shipping_lines", [])
+            if shipping:
+                fact += f" Спосіб доставки: {shipping[0].get('method_title')}."
+
+            items = order_data.get("line_items", [])
+            if items:
+                items_str = ", ".join(
+                    f"{item.get('name')} (x{item.get('quantity')})" for item in items
+                )
+                fact += f" Товари: {items_str}."
+
+            product_facts.append(fact)
+            system_instructions.append(
+                "Клієнт запитує про своє замовлення. Використовуй надані дані (статус, суму, товари, доставку), щоб ввічливо відповісти йому. Не вигадуй інформацію, якої немає."
+            )
+
+        return IntentContextResult(
+            product_facts=product_facts,
+            system_instructions=system_instructions,
+            extracted_links=[],
+            requires_lead=False,
+            lead_form_type=None,
+            new_intent_type=None,
+        )
