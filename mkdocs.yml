@@ -1,0 +1,34 @@
+site_name: BubbleBrain Documentation
+site_description: Technical documentation for BubbleBrain Chatbot AI Backend.
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Tutorials:
+    - Getting Started: tutorials/getting-started.md
+  - How-to Guides:
+    - Configure Pinecone: how-to/configure-pinecone.md
+  - Reference:
+    - API: reference/api.md
+  - Explanation:
+    - RAG Architecture: explanation/rag-architecture.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed

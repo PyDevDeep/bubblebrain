@@ -11,6 +11,14 @@ class ChatRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=4000)
     session_id: str | None = None
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {"question": "What is the price of product X?", "session_id": "session_12345"}
+            ]
+        }
+    }
+
 
 class LeadData(BaseModel):
     name: str | None = Field(default=None, description="Client name")
@@ -46,6 +54,22 @@ class RAGResponse(BaseModel):
 
 class ChatResponse(RAGResponse):
     session_id: str | None = None
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "answer": "The price for product X is $100.",
+                    "sources": ["product_db_1"],
+                    "has_context": True,
+                    "links": [],
+                    "requires_lead": False,
+                    "lead_form_type": None,
+                    "session_id": "session_12345",
+                }
+            ]
+        }
+    }
 
 
 class StreamEvent(BaseModel):

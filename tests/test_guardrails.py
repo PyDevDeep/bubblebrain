@@ -117,3 +117,10 @@ def test_logging_contains_client_ip(
 
     assert "Prompt Injection detected by heuristic" in output
     assert ip_address in output
+
+
+def test_payload_size_limit(guardrails_service: GuardrailsService) -> None:
+    from app.core.constants import MAX_PAYLOAD_SIZE
+
+    huge_text = "A" * (MAX_PAYLOAD_SIZE + 1)
+    assert guardrails_service.validate_input(huge_text) is False

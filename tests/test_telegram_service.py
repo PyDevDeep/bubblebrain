@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -61,7 +62,7 @@ async def test_send_alert_retries(mock_client_class, mock_settings):
 
     with patch("app.services.telegram_service.asyncio.sleep") as mock_sleep:
         # Act
-        res = await service.send_alert("Test Alert")
+        res = await service.send_alert("Test Alert", reply_markup={"inline_keyboard": []})
 
     # Assert
     assert res is True
@@ -90,6 +91,7 @@ async def test_send_lead_success(mock_client_class, mock_settings):
     lead = LeadData(name="Test & Co", phone="+380000000000")
 
     # Act
+    service.fallback_topic = None
     res = await service.send_lead(lead, context_info="Some context <tag>")
 
     # Assert
@@ -117,3 +119,117 @@ async def test_send_lead_error(mock_client_class, mock_settings):
 
     assert res is False
     assert mock_client.post.call_count == 2
+
+    # Missing credentials
+    service.api_base = None
+    res_no_creds = await service.send_lead(LeadData(phone="+380123456789"))
+    assert res_no_creds is False
+
+
+@pytest.mark.asyncio
+async def test_close(mock_settings):
+    service = TelegramService(mock_settings)
+    service.client.aclose = AsyncMock()
+    await service.close()
+    service.client.aclose.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("app.services.telegram_service.httpx.AsyncClient")
+async def test_make_request_with_files(mock_client_class, mock_settings):
+    mock_client = AsyncMock()
+    mock_client_class.return_value = mock_client
+    service = TelegramService(mock_settings)
+    mock_client.post.return_value = Mock(status_code=200)
+    await service._make_request("test", data={"a": 1}, files={"f": "file"})
+    mock_client.post.assert_called_once_with(
+        f"{service.api_base}/test", data={"a": 1}, files={"f": "file"}, timeout=60.0
+    )
+
+    # test missing api_base
+    service.api_base = None
+    res = await service._make_request("test")
+    assert res is None
+
+
+@pytest.mark.asyncio
+@patch("app.services.telegram_service.httpx.AsyncClient")
+async def test_send_alert_with_history(mock_client_class, mock_settings):
+    mock_client = AsyncMock()
+    mock_client_class.return_value = mock_client
+    service = TelegramService(mock_settings)
+    service.send_document = AsyncMock(return_value=True)
+    mock_client.post.return_value = Mock(status_code=200)
+    # With history and session_id
+    await service.send_alert("msg", history=[{"role": "user", "content": "hi"}], session_id="123")
+    service.send_document.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("app.services.telegram_service.httpx.AsyncClient")
+async def test_update_message_reply_markup(mock_client_class, mock_settings):
+    mock_client = AsyncMock()
+    mock_client_class.return_value = mock_client
+    mock_client.post.return_value = Mock(status_code=200)
+    service = TelegramService(mock_settings)
+    res = await service.update_message_reply_markup(123, {"inline_keyboard": []})
+    assert res is True
+    # Test without api base
+    service.api_base = None
+    res = await service.update_message_reply_markup(123)
+    assert res is False
+
+
+@pytest.mark.asyncio
+@patch("app.services.telegram_service.httpx.AsyncClient")
+async def test_edit_message_text(mock_client_class, mock_settings):
+    mock_client = AsyncMock()
+    mock_client_class.return_value = mock_client
+    mock_client.post.return_value = Mock(status_code=200)
+    service = TelegramService(mock_settings)
+    res = await service.edit_message_text(123, "text", {"kb": 1})
+    assert res is True
+    service.api_base = None
+    res = await service.edit_message_text(123, "text")
+    assert res is False
+
+
+@pytest.mark.asyncio
+@patch("app.services.telegram_service.httpx.AsyncClient")
+async def test_send_document(mock_client_class, mock_settings):
+    mock_client = AsyncMock()
+    mock_client_class.return_value = mock_client
+    mock_client.post.return_value = Mock(status_code=200)
+    service = TelegramService(mock_settings)
+    service.fallback_topic = None
+    res = await service.send_document("doc.txt", "content", "cap", "general")
+    assert res is True
+
+    # Missing credentials
+    service.api_base = None
+    res2 = await service.send_document("doc.txt", "content", "cap", "general")
+    assert res2 is False
+
+
+@pytest.mark.asyncio
+@patch("app.services.telegram_service.httpx.AsyncClient")
+async def test_topics_present(mock_client_class, mock_settings):
+    mock_client = AsyncMock()
+    mock_client_class.return_value = mock_client
+    mock_settings.telegram_topic_general = 12345
+    service = TelegramService(mock_settings)
+
+    mock_client.post.return_value = Mock(status_code=200)
+
+    await service.send_alert("msg")
+    await service.send_lead(LeadData(phone="+380000000000"))
+    await service.send_document("doc.txt", "content")
+
+    assert mock_client.post.call_count == 3
+
+    # Assert that message_thread_id was sent in the payload
+    for call in mock_client.post.call_args_list:
+        if "data" in call.kwargs:
+            assert call.kwargs["data"]["message_thread_id"] == 12345
+        else:
+            assert call.kwargs["json"]["message_thread_id"] == 12345

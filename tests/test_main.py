@@ -1,4 +1,8 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
@@ -18,3 +22,81 @@ async def test_debug_fs(async_client):
     assert "exists" in data
     assert "files" in data
     assert "path" in data
+
+
+def test_create_application():
+    from app.main import create_application
+
+    app = create_application()
+    assert isinstance(app, FastAPI)
+    assert app.title == "Chatbot AI Backend"
+
+    # Check if static is mounted
+    assert any(getattr(route, "name", None) == "frontend" for route in app.routes)
+
+    # Check if debug-fs works
+    client = TestClient(app)
+    response = client.get("/debug-fs")
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+@patch("app.core.db.init_db", new_callable=AsyncMock)
+@patch("app.services.cache_service.CacheService")
+@patch("app.services.vector_service.VectorService")
+@patch("app.main.AsyncIOScheduler")
+@patch("apscheduler.jobstores.sqlalchemy.SQLAlchemyJobStore")
+@patch("app.api.v1.endpoints.chat.get_cached_rag_engine")
+@patch("app.services.woo_service.close_woo_client", new_callable=AsyncMock)
+@patch("app.main.sentry_sdk")
+@patch("app.main.get_settings")
+async def test_lifespan(
+    mock_get_settings,
+    mock_sentry,
+    mock_close_woo,
+    mock_get_rag,
+    mock_jobstore,
+    mock_scheduler,
+    mock_vector_service,
+    mock_cache_service,
+    mock_init_db,
+):
+    from app.main import lifespan
+
+    # Arrange
+    mock_settings = MagicMock()
+    mock_settings.sentry_dsn = "http://test@localhost/1"
+    mock_settings.pinecone_environment = "test-env"
+    mock_settings.log_level = "INFO"
+    mock_get_settings.return_value = mock_settings
+
+    mock_cache_instance = AsyncMock()
+    mock_cache_service.return_value = mock_cache_instance
+
+    mock_vector_instance = AsyncMock()
+    mock_vector_service.return_value = mock_vector_instance
+
+    mock_sched_instance = MagicMock()
+    mock_scheduler.return_value = mock_sched_instance
+
+    mock_rag = MagicMock()
+    mock_rag.price_comparator.scraper_service.close = AsyncMock()
+    mock_get_rag.return_value = mock_rag
+
+    app = FastAPI()
+
+    # Act
+    async with lifespan(app):
+        # Assert startup
+        mock_init_db.assert_awaited_once()
+        mock_cache_instance.initialize.assert_awaited_once()
+        mock_sentry.init.assert_called_once()
+        mock_vector_instance.initialize.assert_awaited_once()
+        mock_sched_instance.add_job.assert_called()
+        mock_sched_instance.start.assert_called_once()
+
+    # Assert shutdown
+    mock_sched_instance.shutdown.assert_called_once_with(wait=False)
+    mock_rag.price_comparator.scraper_service.close.assert_awaited_once()
+    mock_close_woo.assert_awaited_once()
+    mock_sentry.flush.assert_called_once()

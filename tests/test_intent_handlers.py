@@ -194,3 +194,38 @@ async def test_search_intent_nothing_found(mock_price_comparator):
     # Assert
     assert res.requires_lead is True
     assert len(res.system_instructions) > 0
+
+
+@pytest.mark.asyncio
+async def test_order_status_intent_handler():
+    from app.services.intent_handlers import OrderStatusIntentHandler
+
+    woo_service = AsyncMock()
+    handler = OrderStatusIntentHandler(woo_service)
+
+    # Test valid id
+    woo_service.get_order_async.return_value = {
+        "id": 1234,
+        "status": "processing",
+        "total": "500",
+        "currency": "UAH",
+    }
+
+    res = await handler.handle({"strict_query": "1234"}, [], [])
+    assert res.requires_lead is False
+    assert "Замовлення #1234" in res.product_facts[0]
+
+    # Test invalid id
+    res_no_id = await handler.handle({"strict_query": None}, [], [])
+    assert res_no_id.requires_lead is False
+    assert "Не вдалося визначити номер замовлення" in res_no_id.system_instructions[0]
+
+    # Test not found
+    woo_service.get_order_async.return_value = None
+    res_not_found = await handler.handle({"strict_query": "999"}, [], [])
+    assert "не знайдено" in res_not_found.system_instructions[0]
+
+    # Test API error
+    woo_service.get_order_async.side_effect = Exception("API")
+    res_err = await handler.handle({"strict_query": "777"}, [], [])
+    assert "не знайдено" in res_err.system_instructions[0]
