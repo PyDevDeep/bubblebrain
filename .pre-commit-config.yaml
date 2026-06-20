@@ -23,7 +23,7 @@ repos:
     hooks:
       - id: pytest
         name: Run pytest
-        entry: poetry run pytest
+        entry: poetry run pytest -m "not remote"
         language: system
         types: [python]
         pass_filenames: false

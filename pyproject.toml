@@ -8,12 +8,12 @@ package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.13"
-fastapi = "^0.115.0"
+fastapi = ">=0.115.14"
 uvicorn = {extras = ["standard"], version = "^0.32.0"}
 openai = "^1.50.0"
 pinecone = "^5.3.0"
 pydantic-settings = "^2.5.0"
-python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+python-jose = {extras = ["cryptography"], version = "==3.3.0"}
 structlog = "^24.4.0"
 sentry-sdk = {extras = ["fastapi"], version = "^2.14.0"}
 slowapi = "^0.1.9"
@@ -67,6 +67,9 @@ testpaths = ["tests"]
 pythonpath = ["."]
 asyncio_mode = "auto"
 filterwarnings = ["ignore::ResourceWarning"]
+markers = [
+    "remote: marks tests that require a running external server"
+]
 
 [tool.pyrefly]
 project-excludes = [
