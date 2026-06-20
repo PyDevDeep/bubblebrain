@@ -41,7 +41,9 @@ RULES:
    -> {{"intent": "{intent_general}", "product_name": null, "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": []}}
 8. If the client expresses a desire to contact a manager, talk to a human, or leave contacts:
    -> {{"intent": "{intent_contact}", "product_name": null, "strict_query": null, "broad_query": null, "category_query": null, "normalized_faq_queries": []}}
-9. CRITICAL: The "intent" MUST be based MAINLY on the "Current Query". If the user ignores a previous bot request to provide contact info and instead asks a completely new question, classify the intent based ONLY on the new question. Do NOT carry over "contact" intent from the History unless the current query explicitly asks for a manager.
+9. If the client asks about the status, details, or shipping of a specific existing order (often providing an order number like 276677):
+   -> {{"intent": "{intent_order_status}", "product_name": null, "strict_query": "extract the order number (digits) here if present", "broad_query": null, "category_query": null, "normalized_faq_queries": []}}
+10. CRITICAL: The "intent" MUST be based MAINLY on the "Current Query". If the user ignores a previous bot request to provide contact info and instead asks a completely new question, classify the intent based ONLY on the new question. Do NOT carry over "contact" intent from the History unless the current query explicitly asks for a manager.
 
 Respond ONLY with valid JSON."""
 

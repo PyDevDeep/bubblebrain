@@ -216,3 +216,38 @@ class WooService:
             "paid": paid,
             "tags": tags,
         }
+
+    async def get_order_async(self, order_id: int) -> dict[str, Any] | None:
+        """Asynchronous fetch of a specific order in WooCommerce by ID."""
+        from app.services.woo_smart_parser import parse_order
+
+        order_url = f"{self.base_url.replace('/products', '/orders')}/{order_id}"
+        client = self._get_client()
+
+        try:
+            resp = await client.get(
+                order_url, auth=(self.woo_ck, self.woo_cs), timeout=self.timeout
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if data:
+                return await asyncio.to_thread(parse_order, data)
+        except httpx.TimeoutException:
+            logger.error("WooCommerce API Order Fetch Timeout", order_id=order_id)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.info("WooCommerce API Order Not Found", order_id=order_id)
+            else:
+                logger.error(
+                    "WooCommerce API Order Fetch HTTP Status Error", error=str(e), order_id=order_id
+                )
+        except httpx.RequestError as e:
+            logger.error(
+                "WooCommerce API Order Fetch Request Error", error=str(e), order_id=order_id
+            )
+        except Exception as e:
+            logger.error(
+                "WooCommerce API Order Fetch Unexpected Error", error=str(e), order_id=order_id
+            )
+
+        return None
