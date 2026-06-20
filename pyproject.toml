@@ -19,7 +19,7 @@ sentry-sdk = {extras = ["fastapi"], version = "^2.14.0"}
 slowapi = "^0.1.9"
 prometheus-client = "^0.21.0"
 httpx = "^0.27.2"
-python-multipart = ">=0.0.12,<0.0.32"
+python-multipart = ">=0.0.12,<0.0.33"
 pdfplumber = "^0.11.4"
 python-docx = "^1.1.2"
 aiosqlite = "^0.22.1"
