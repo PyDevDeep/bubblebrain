@@ -41,3 +41,71 @@ def test_parse_product_short_description_truncation():
     res = parse_product(raw, max_desc_length=100)
     assert len(res["short_description"]) <= 103  # including ...
     assert res["short_description"].endswith("...")
+
+
+def test_parse_product_invalid_input():
+    from app.services.woo_smart_parser import parse_product
+
+    res = parse_product(None)
+    assert res["id"] is None
+    res2 = parse_product("not_a_dict")  # type: ignore[arg-type]
+    assert res2["id"] is None
+
+
+def test_parse_product_validation_error():
+    from app.services.woo_smart_parser import parse_product
+
+    # pass bad types to trigger ValidationError
+    res = parse_product({"id": "valid", "attributes": "not_a_list"})
+    assert res["id"] is None
+
+
+def test_parse_product_exception():
+    from unittest.mock import patch
+
+    from app.services.woo_smart_parser import parse_product
+
+    with patch("app.services.woo_smart_parser.BeautifulSoup", side_effect=Exception("BS Error")):
+        res = parse_product({"id": 1, "short_description": "<div></div>"})
+        assert res["id"] == 1
+
+
+def test_parse_order():
+    from app.services.woo_smart_parser import parse_order
+
+    res = parse_order(None)
+    assert res == {}
+
+    res = parse_order("not a dict")  # type: ignore[arg-type]
+    assert res == {}
+
+    raw_order = {
+        "id": 123,
+        "status": "processing",
+        "total": "500.0",
+        "currency": "UAH",
+        "date_created": "2023-01-01T10:00:00",
+        "billing": {"first_name": "Ivan", "last_name": "Ivanov", "phone": "380991234567"},
+        "shipping_lines": [{"method_title": "Nova Poshta", "meta_data": []}],
+        "line_items": [
+            {"name": "Product 1", "quantity": 2, "price": "250.0", "total": "500.0", "sku": "SKU-1"}
+        ],
+        "payment_method_title": "Card",
+    }
+
+    parsed = parse_order(raw_order)
+    assert parsed["id"] == 123
+    assert parsed["status"] == "processing"
+    assert parsed["billing"]["first_name"] == "Ivan"
+    assert parsed["shipping_lines"][0]["method_title"] == "Nova Poshta"
+    assert parsed["line_items"][0]["sku"] == "SKU-1"
+
+
+def test_parse_order_exception():
+    from unittest.mock import patch
+
+    from app.services.woo_smart_parser import parse_order
+
+    with patch("app.schemas.order.WooOrder", side_effect=Exception("Model Error")):
+        res = parse_order({"id": 1})
+        assert res == {}

@@ -131,3 +131,68 @@ async def test_get_chat_completion_rate_limit(mock_async_openai_class, mock_sett
     # Act & Assert
     with pytest.raises(tenacity.RetryError):
         await service.get_chat_completion("sys", "user", [])
+
+
+@pytest.mark.asyncio
+@patch("app.services.openai_service.AsyncOpenAI")
+async def test_generate_embeddings_batch(mock_async_openai_class, mock_settings):
+    mock_client = AsyncMock()
+    mock_async_openai_class.return_value = mock_client
+    service = OpenAIService(mock_settings)
+    service.client = mock_client
+
+    mock_response = MagicMock()
+    mock_response.usage.prompt_tokens = 5
+    m1 = MagicMock(index=1, embedding=[0.2])
+    m0 = MagicMock(index=0, embedding=[0.1])
+    mock_response.data = [m1, m0]
+    mock_client.embeddings.create.return_value = mock_response
+
+    result = await service.generate_embeddings_batch(["t1", "t2"])
+
+    assert result == [[0.1], [0.2]]
+
+
+@pytest.mark.asyncio
+@patch("app.services.openai_service.AsyncOpenAI")
+async def test_generate_embeddings_batch_empty(mock_async_openai_class, mock_settings):
+    service = OpenAIService(mock_settings)
+    with pytest.raises(ValueError, match="cannot be empty"):
+        await service.generate_embeddings_batch([])
+
+
+@pytest.mark.asyncio
+@patch("app.services.openai_service.AsyncOpenAI")
+async def test_generate_embeddings_batch_error(mock_async_openai_class, mock_settings):
+    mock_client = AsyncMock()
+    mock_async_openai_class.return_value = mock_client
+    service = OpenAIService(mock_settings)
+    service.client = mock_client
+
+    from openai import OpenAIError
+
+    mock_client.embeddings.create.side_effect = OpenAIError("API error")
+    import tenacity
+
+    with pytest.raises(tenacity.RetryError):
+        await service.generate_embeddings_batch(["t1"])
+
+
+@pytest.mark.asyncio
+@patch("app.services.openai_service.AsyncOpenAI")
+async def test_stream_chat_completion_error(mock_async_openai_class, mock_settings):
+    mock_client = AsyncMock()
+    mock_async_openai_class.return_value = mock_client
+    service = OpenAIService(mock_settings)
+    service.client = mock_client
+
+    from openai import OpenAIError
+
+    mock_client.chat.completions.create.side_effect = OpenAIError("API error")
+
+    import openai
+    import tenacity
+
+    with pytest.raises((tenacity.RetryError, openai.OpenAIError)):
+        async for _ in service.stream_chat_completion("sys", "user", []):
+            pass

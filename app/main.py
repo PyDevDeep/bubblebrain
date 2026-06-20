@@ -117,7 +117,17 @@ def create_application() -> FastAPI:
     app = FastAPI(
         title="Chatbot AI Backend",
         version="0.1.0",
-        description="Backend for Chat Embed with RAG",
+        description="""
+Backend for Chat Embed with RAG.
+
+## Authentication
+All API requests to `/api/v1/*` endpoints require a Bearer token in the `Authorization` header.
+Example: `Authorization: Bearer YOUR_API_KEY`
+
+## Rate Limiting
+Endpoints are protected by rate limiting.
+For chat endpoints, the limit is **20 requests per minute** per IP.
+""",
         lifespan=lifespan,
     )
 
