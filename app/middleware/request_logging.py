@@ -8,6 +8,8 @@ from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+EXCLUDED_PATHS = {"/metrics", "/metrics/", "/health"}
+
 
 class RequestLoggingMiddleware:
     def __init__(self, app: ASGIApp) -> None:
@@ -17,7 +19,7 @@ class RequestLoggingMiddleware:
         if scope["type"] != "http":
             return await self.app(scope, receive, send)
 
-        request_id = str(uuid.uuid4())
+        request_id = uuid.uuid4().hex
         start_time = time.perf_counter()
 
         bound_logger = logger.bind(request_id=request_id)
@@ -41,10 +43,11 @@ class RequestLoggingMiddleware:
             raise exc
         finally:
             process_time = time.perf_counter() - start_time
-            bound_logger.info(
-                "Request completed",
-                method=method,
-                path=path,
-                status_code=status_code,
-                latency=round(process_time, 4),
-            )
+            if path not in EXCLUDED_PATHS:
+                bound_logger.info(
+                    "Request completed",
+                    method=method,
+                    path=path,
+                    status_code=status_code,
+                    latency=round(process_time, 4),
+                )
