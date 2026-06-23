@@ -42,8 +42,8 @@ def test_create_application():
 
 @pytest.mark.asyncio
 @patch("app.core.db.init_db", new_callable=AsyncMock)
-@patch("app.services.cache_service.CacheService")
-@patch("app.services.vector_service.VectorService")
+@patch("app.api.dependencies.get_cache_service")
+@patch("app.api.dependencies.get_vector_service")
 @patch("app.main.AsyncIOScheduler")
 @patch("apscheduler.jobstores.sqlalchemy.SQLAlchemyJobStore")
 @patch("app.api.dependencies.get_scraper_service")
@@ -57,8 +57,8 @@ async def test_lifespan(
     mock_get_scraper,
     mock_jobstore,
     mock_scheduler,
-    mock_vector_service,
-    mock_cache_service,
+    mock_get_vector_service,
+    mock_get_cache_service,
     mock_init_db,
 ):
     from app.main import lifespan
@@ -71,10 +71,10 @@ async def test_lifespan(
     mock_get_settings.return_value = mock_settings
 
     mock_cache_instance = AsyncMock()
-    mock_cache_service.return_value = mock_cache_instance
+    mock_get_cache_service.return_value = mock_cache_instance
 
     mock_vector_instance = AsyncMock()
-    mock_vector_service.return_value = mock_vector_instance
+    mock_get_vector_service.return_value = mock_vector_instance
 
     mock_sched_instance = MagicMock()
     mock_scheduler.return_value = mock_sched_instance
