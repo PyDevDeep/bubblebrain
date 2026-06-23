@@ -1,6 +1,7 @@
 import asyncio
 import csv
-import os
+
+from anyio import Path as AnyioPath
 
 from app.core.logging_config import get_logger
 
@@ -21,56 +22,70 @@ class CategoryManager:
 
     async def _load_categories(self) -> None:
         """Checks the file modification date and safely updates the cache."""
-        async with self._lock:
-            # os.path.exists and os.path.getmtime are fast enough for the main thread
-            if not os.path.exists(self.csv_path):  # noqa: ASYNC240
-                logger.warning("Category CSV not found", path=self.csv_path)
+        csv_path_obj = AnyioPath(self.csv_path)
+        if not await csv_path_obj.exists():
+            logger.warning(
+                "Category CSV not found, attempting to fetch from WooCommerce...",
+                path=self.csv_path,
+            )
+            try:
+                from scripts.export_categories import export_categories_to_csv
+
+                await export_categories_to_csv()
+            except Exception as e:
+                logger.error("Failed to automatically export categories", error=str(e))
+
+            if not await csv_path_obj.exists():
+                logger.error(
+                    "Category CSV still not found after export attempt.", path=self.csv_path
+                )
                 return
 
-            try:
-                mtime = os.path.getmtime(self.csv_path)  # noqa: ASYNC240
-                if mtime <= self._last_mtime:
-                    return  # File hasn't changed
+        try:
+            stat = await csv_path_obj.stat()
+            mtime = stat.st_mtime
+            if mtime <= self._last_mtime:
+                return  # File hasn't changed
 
-                def _read_and_parse_csv() -> tuple[dict[str, int], list[str], int]:
-                    new_map: dict[str, int] = {}
-                    new_list: list[str] = []
-                    skipped_rows = 0
+            def _read_and_parse_csv() -> tuple[dict[str, int], list[str], int]:
+                new_map: dict[str, int] = {}
+                new_list: list[str] = []
+                skipped_rows = 0
 
-                    with open(self.csv_path, encoding="utf-8") as f:
-                        reader = csv.DictReader(f)
-                        for row in reader:
-                            try:
-                                count = int(row.get("Count", 0))
-                                if count > 0:
-                                    cat_id = int(row["ID"])
-                                    name = row["Name"].strip()
-                                    new_map[name.lower()] = cat_id
-                                    new_list.append(name)
-                            except (ValueError, KeyError, TypeError):
-                                skipped_rows += 1
-                                continue
-                    return new_map, new_list, skipped_rows
+                with open(self.csv_path, encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        try:
+                            count = int(row.get("Count", 0))
+                            if count > 0:
+                                cat_id = int(row["ID"])
+                                name = row["Name"].strip()
+                                new_map[name.lower()] = cat_id
+                                new_list.append(name)
+                        except (ValueError, KeyError, TypeError):
+                            skipped_rows += 1
+                            continue
+                return new_map, new_list, skipped_rows
 
-                new_map, new_list, skipped_rows = await asyncio.to_thread(_read_and_parse_csv)
+            new_map, new_list, skipped_rows = await asyncio.to_thread(_read_and_parse_csv)
 
-                # Update state only if parsing was successful and there is data
-                if new_map:
-                    self._categories_map = new_map
-                    self._categories_list_str = ", ".join(new_list)
-                    self._last_mtime = mtime
-                    logger.info(
-                        "Hot-reloaded categories",
-                        count=len(self._categories_map),
-                        skipped_rows=skipped_rows,
-                        path=self.csv_path,
-                    )
-
-            except Exception as e:
-                logger.error(
-                    "Failed to load categories, keeping old cache", path=self.csv_path, error=str(e)
+            if new_map:
+                async with self._lock:
+                    if mtime > self._last_mtime:
+                        self._categories_map = new_map
+                        self._categories_list_str = ", ".join(new_list)
+                        self._last_mtime = mtime
+                logger.info(
+                    "Hot-reloaded categories",
+                    count=len(self._categories_map),
+                    skipped_rows=skipped_rows,
+                    path=self.csv_path,
                 )
-                # Do not clear the old cache, just log the error (prevent Race Condition)
+
+        except Exception as e:
+            logger.error(
+                "Failed to load categories, keeping old cache", path=self.csv_path, error=str(e)
+            )
 
     async def get_categories_string(self) -> str:
         """Returns a string of categories for injection into the LLM prompt."""

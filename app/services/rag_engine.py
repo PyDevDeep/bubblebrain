@@ -15,10 +15,10 @@ from app.core.constants import (
     BTN_SUCCESS_SHORT,
     CHAT_HISTORY_MARKER,
     CHAT_QUERY_MARKER,
+    INSTR_NO_PHONE_IN_CHAT,
     INTENT_CHECKOUT,
     INTENT_CONTACT,
     INTENT_FAQ,
-    INTENT_GENERAL,
     INTENT_HYBRID,
     INTENT_ORDER_STATUS,
     INTENT_PRODUCT,
@@ -31,14 +31,10 @@ from app.core.constants import (
     MSG_STREAM_FAILED,
     REGEX_CLEAN_QUERY,
     REGEX_PHONE,
-    REGEX_PRODUCT_NAME_HISTORY,
 )
-from app.core.db import AsyncSessionLocal, commit_with_retry
 from app.core.logging_config import get_logger
-from app.models.lead import Lead
 from app.schemas.chat import (
     IntentContextResult,
-    IntentDetectionResult,
     LinkItem,
     PipelineContext,
     RAGResponse,
@@ -57,7 +53,6 @@ from app.services.telegram_service import TelegramService
 from app.services.vector_service import VectorService
 from app.utils.prompts import (
     INSTR_CONTACT_MANAGER,
-    INTENT_ANALYZER_PROMPT,
     NO_CONTEXT_RESPONSE,
     RAG_SYSTEM_PROMPT,
 )
@@ -82,6 +77,11 @@ class RAGEngine:
         guardrails_service: GuardrailsService,
         chat_memory_service: ChatMemoryService,
         settings: Settings,
+        lead_service: Any = None,
+        intent_detection_service: Any = None,
+        product_intent_handler: Any = None,
+        search_intent_handler: Any = None,
+        order_status_intent_handler: Any = None,
     ) -> None:
         self.openai_service = openai_service
         self.vector_service = vector_service
@@ -91,104 +91,27 @@ class RAGEngine:
         self.guardrails_service = guardrails_service
         self.chat_memory_service = chat_memory_service
         self.settings = settings
+        from app.services.lead_service import LeadService
+
+        self.lead_service = lead_service or LeadService(telegram_service, chat_memory_service)
+
+        from app.services.intent_detection_service import IntentDetectionService
+
+        self.intent_detection_service = intent_detection_service or IntentDetectionService(
+            openai_service, category_manager
+        )
+
         self.top_k = settings.top_k_results
         self.threshold = settings.similarity_threshold
-        self.product_intent_handler = ProductCheckoutIntentHandler(
+        self.product_intent_handler = product_intent_handler or ProductCheckoutIntentHandler(
             price_comparator=price_comparator, telegram_service=telegram_service, settings=settings
         )
-        self.search_intent_handler = SearchIntentHandler(price_comparator=price_comparator)
-        self.order_status_intent_handler = OrderStatusIntentHandler(
+        self.search_intent_handler = search_intent_handler or SearchIntentHandler(
+            price_comparator=price_comparator
+        )
+        self.order_status_intent_handler = order_status_intent_handler or OrderStatusIntentHandler(
             woo_service=price_comparator.woo_service
         )
-
-    async def detect_intent(self, question: str, history_context: str) -> dict[str, Any]:
-        """
-        Detects user intent using an LLM based on the conversation history and current question.
-
-        Args:
-            question: The user's query.
-            history_context: String representation of the chat history.
-
-        Returns:
-            Dictionary containing 'intent', 'product_name', 'strict_query',
-            'broad_query', 'category_query', and 'normalized_faq_queries'.
-        """
-        stripped_q = question.strip()
-
-        # Regex checks for product codes
-        sku_match = re.search(r"\b\d{6}\b", stripped_q)
-        pn_match = re.search(
-            r"\b(?=[a-zA-Z0-9\-\.]*[a-zA-Z])(?=[a-zA-Z0-9\-\.]*\d)[a-zA-Z0-9\-\.]{5,25}\b",
-            stripped_q,
-        )
-
-        extracted_code = None
-        if sku_match:
-            extracted_code = sku_match.group(0)
-        elif pn_match:
-            extracted_code = pn_match.group(0)
-
-        faq_triggers = [
-            "доставка",
-            "оплата",
-            "гаранті",
-            "купити",
-            "замовити",
-            "наявн",
-            "скільки",
-            "як ",
-        ]
-        needs_llm = any(trigger in stripped_q.lower() for trigger in faq_triggers)
-
-        # Fast-path for pure part numbers/SKUs
-        if extracted_code and not needs_llm and len(stripped_q) < 100:
-            return {
-                "intent": INTENT_SEARCH,
-                "product_name": None,
-                "strict_query": extracted_code,
-                "broad_query": stripped_q,
-                "category_query": None,
-                "normalized_faq_queries": [],
-            }
-
-        categories_str = await self.category_manager.get_categories_string()
-
-        prompt = INTENT_ANALYZER_PROMPT.format(
-            history_context=history_context if history_context else "None",
-            question=question,
-            categories_str=categories_str,
-            intent_product=INTENT_PRODUCT,
-            intent_search=INTENT_SEARCH,
-            intent_checkout=INTENT_CHECKOUT,
-            intent_hybrid=INTENT_HYBRID,
-            intent_general=INTENT_GENERAL,
-            intent_contact=INTENT_CONTACT,
-            intent_order_status=INTENT_ORDER_STATUS,
-        )
-
-        try:
-            response = await self.openai_service.get_chat_completion(
-                system_prompt="You are a system JSON analyzer. Ensure you respond with valid JSON.",
-                user_message=prompt,
-                context_chunks=[],
-                response_format={"type": "json_object"},
-            )
-            cleaned = response.replace("```json", "").replace("```", "").strip()
-            parsed_json = IntentDetectionResult.model_validate_json(cleaned).model_dump()
-
-            # Fallback override
-            if extracted_code and parsed_json.get("intent") in (INTENT_GENERAL, INTENT_FAQ):
-                parsed_json["intent"] = INTENT_SEARCH
-                parsed_json["strict_query"] = extracted_code
-                parsed_json["broad_query"] = stripped_q
-
-            return parsed_json
-        except json.JSONDecodeError:
-            logger.exception("Intent detection JSON parsing failed")
-            return {"intent": INTENT_FAQ, "normalized_faq_queries": [question]}
-        except Exception:
-            logger.exception("Intent detection generic error")
-            return {"intent": INTENT_FAQ, "normalized_faq_queries": [question]}
 
     async def _retrieve_context(
         self, search_query: str, precomputed_vector: list[float] | None = None
@@ -241,24 +164,6 @@ class RAGEngine:
 
         intent_type = intent_data.get("intent", INTENT_FAQ)
         product_name = intent_data.get("product_name")
-
-        # Context recovery from history
-        if (not product_name or product_name == "FOUND_NAME_FROM_HISTORY") and intent_type in [
-            INTENT_PRODUCT,
-            INTENT_CHECKOUT,
-            INTENT_HYBRID,
-        ]:
-            for msg in reversed(history):
-                content = msg.get("content", "")
-                if msg.get("role") == "bot" and "Товар" in content:
-                    match = re.search(REGEX_PRODUCT_NAME_HISTORY, content)
-                    if match:
-                        product_name = match.group(1)
-                        logger.info(
-                            "Recovered product name from bot history",
-                            extra={"product_name": product_name},
-                        )
-                        break
 
         category_term = str(intent_data.get("category_query") or "").strip()
         category_id = (
@@ -362,28 +267,21 @@ class RAGEngine:
             lead_type = "price_clarification" if is_price_clarification else "contact"
 
             try:
-                async with AsyncSessionLocal() as session:
-                    db_lead = Lead(
-                        name="Клієнт з чату",
-                        phone_number=phone_number,
-                        contact_method="chat",
-                        lead_type=lead_type,
-                        session_id=session_id,
-                        status="new",
-                        notification_status="pending",
-                    )
-                    session.add(db_lead)
-                    await commit_with_retry(session)
-                    await session.refresh(db_lead)
-                    lead_id = int(db_lead.id)  # type: ignore
+                lead_id = await self.lead_service.create_chat_lead(
+                    phone_number=phone_number, lead_type=lead_type, session_id=session_id
+                )
+
+                import html
+
+                safe_question = html.escape(question)
 
                 if is_price_clarification:
                     message = ALERT_PRICE_CLARIFICATION.format(
-                        lead_id=lead_id, phone=phone_number, question=question
+                        lead_id=lead_id, phone=phone_number, question=safe_question
                     )
                 else:
                     message = ALERT_CHAT_LEAD.format(
-                        lead_id=lead_id, phone=phone_number, question=question
+                        lead_id=lead_id, phone=phone_number, question=safe_question
                     )
 
                 # Safe button formatting: avoid AttributeError and typing errors
@@ -419,11 +317,9 @@ class RAGEngine:
                     message, alert_type="lead", session_id=session_id, reply_markup=reply_markup
                 )
 
-                async with AsyncSessionLocal() as session:
-                    lead = await session.get(Lead, lead_id)
-                    if lead:
-                        lead.notification_status = "sent" if lead_success else "failed"  # type: ignore
-                        await commit_with_retry(session)
+                await self.lead_service.update_lead_notification_status(
+                    lead_id=lead_id, status="sent" if lead_success else "failed"
+                )
 
                 msg = MSG_LEAD_SUCCESS if lead_success else MSG_LEAD_FAILED
                 await self.chat_memory_service.add_interaction(session_id, question, msg)
@@ -480,6 +376,9 @@ class RAGEngine:
         if is_lead and lead_ctx:
             return lead_ctx
 
+        session_state = await self.chat_memory_service.get_session_state(session_id)
+        session_state_json = json.dumps(session_state, ensure_ascii=False)
+
         history = await self.chat_memory_service.get_history(session_id, limit=6)
         history_context = "\n".join(
             [
@@ -504,17 +403,24 @@ class RAGEngine:
         if faq_results and faq_results[0].get("metadata", {}).get("source") == "store_policy":
             intent_data = {"intent": INTENT_FAQ, "normalized_faq_queries": [question]}
         else:
-            intent_data = await self.detect_intent(question, history_context)
+            intent_data = await self.intent_detection_service.detect_intent(
+                question, history_context, session_state_json
+            )
 
         intent_type = intent_data.get("intent", INTENT_FAQ)
 
+        # Fallback for missing product name if intent analyzer failed to extract it
+        if not intent_data.get("product_name") and intent_type in [
+            INTENT_PRODUCT,
+            INTENT_HYBRID,
+            INTENT_CHECKOUT,
+        ]:
+            last_prods = cast(list[str], session_state.get("last_products", []))
+            if last_prods:
+                intent_data["product_name"] = last_prods[-1]
+
         if intent_type in [INTENT_PRODUCT, INTENT_SEARCH, INTENT_CHECKOUT]:
             intent_data["normalized_faq_queries"] = []
-
-        if intent_type == INTENT_SEARCH:
-            await self.chat_memory_service.reset_rag_context(session_id)
-            history_context = ""
-            history = []
 
         raw_queries = intent_data.get("normalized_faq_queries", [])
         valid_queries: list[str] = []
@@ -530,6 +436,18 @@ class RAGEngine:
 
         vector_tasks = []
         if valid_queries:
+            # First generate all embeddings in one batch call
+            queries_to_embed = [q for q in valid_queries if q not in embedding_cache]
+            if queries_to_embed:
+                try:
+                    batch_embeddings = await self.openai_service.generate_embeddings_batch(
+                        queries_to_embed
+                    )
+                    for q, emb in zip(queries_to_embed, batch_embeddings, strict=False):
+                        embedding_cache[q] = emb
+                except Exception as e:
+                    logger.warning("Batch embedding failed", error=str(e))
+
             vector_tasks = [
                 self._retrieve_context(nq, precomputed_vector=embedding_cache.get(nq))
                 for nq in valid_queries
@@ -579,7 +497,20 @@ class RAGEngine:
             requires_lead = intent_results.requires_lead
             lead_form_type = intent_results.lead_form_type
 
+            if intent_results.viewed_products or intent_type == INTENT_SEARCH:
+                search_term = str(
+                    intent_data.get("strict_query") or intent_data.get("broad_query") or ""
+                )
+                await self.chat_memory_service.update_session_state(
+                    session_id,
+                    last_search_query=search_term,
+                    last_products=intent_results.viewed_products,
+                )
+
         prepended_context: list[str] = []
+        if requires_lead:
+            system_instructions.append(INSTR_NO_PHONE_IN_CHAT)
+
         if system_instructions:
             prepended_context.append("\n".join(system_instructions))
         if product_facts:
@@ -638,6 +569,20 @@ class RAGEngine:
                 links=[],
                 requires_lead=True,
                 lead_form_type=None,
+            )
+
+        if ctx.lead_form_type == "checkout":
+            hardcoded_msg = "Чудово! Товар доступний до замовлення.\n\nЩоб безпечно оформити покупку, обрати спосіб доставки та оплати — натисніть кнопку **Оформити замовлення** нижче.\n\nТакож ви можете заповнити форму контактів або написати нашому менеджеру в Telegram/Viber для уточнення деталей."
+            await self.chat_memory_service.add_interaction(session_id, question, hardcoded_msg)
+            return RAGResponse.model_validate(
+                {
+                    "answer": hardcoded_msg,
+                    "sources": ctx.sources,
+                    "has_context": True,
+                    "links": ctx.extracted_links,
+                    "requires_lead": ctx.requires_lead,
+                    "lead_form_type": ctx.lead_form_type,
+                }
             )
 
         try:
@@ -706,6 +651,28 @@ class RAGEngine:
             ensure_ascii=False,
         )
         yield f"[METADATA] {meta_payload}"
+
+        if ctx.lead_form_type == "checkout":
+            hardcoded_msg = "Чудово! Товар доступний до замовлення.\n\nЩоб безпечно оформити покупку, обрати спосіб доставки та оплати — натисніть кнопку **Оформити замовлення** нижче.\n\nТакож ви можете заповнити форму контактів або написати нашому менеджеру в Telegram/Viber для уточнення деталей."
+            yield json.dumps({"token": hardcoded_msg}, ensure_ascii=False)
+
+            links_metadata = ""
+            if ctx.extracted_links:
+                for link in ctx.extracted_links:
+                    if link.get("url"):
+                        links_metadata += f" <!-- link: {link['url']} -->"
+
+            bg_tasks: set[asyncio.Task[Any]] = getattr(self, "_bg_tasks", set())
+            if not hasattr(self, "_bg_tasks"):
+                self._bg_tasks = bg_tasks
+            t_checkout = asyncio.create_task(
+                self.chat_memory_service.add_interaction(
+                    session_id, question, hardcoded_msg + links_metadata
+                )
+            )
+            bg_tasks.add(t_checkout)
+            t_checkout.add_done_callback(bg_tasks.discard)
+            return
 
         response_tokens: list[str] = []
         stream: AsyncGenerator[str] | None = None

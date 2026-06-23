@@ -1,4 +1,3 @@
-import html
 import logging
 from typing import Any
 
@@ -6,10 +5,16 @@ import httpx
 
 from app.core.config import Settings
 from app.core.constants import (
-    ALERT_MARGIN_ISSUE,
-    ALERT_SCRAPER_FAILED,
     BTN_CHANGE_PRICE,
     BTN_VIEW_PRODUCT,
+    FACT_CHECKOUT_PRODUCT,
+    FACT_INFO_PRODUCT,
+    INSTR_NO_PREPAYMENT,
+    INSTR_ORDER_ID_MISSING,
+    INSTR_ORDER_NOT_FOUND,
+    INSTR_ORDER_STATUS,
+    INSTR_PRICE_CHANGED_ALERT,
+    INSTR_SEARCH_FALLBACK,
     INTENT_CHECKOUT,
     INTENT_HYBRID,
     INTENT_PRODUCT,
@@ -22,13 +27,12 @@ from app.core.constants import (
     STATUS_OUT_OF_STOCK,
 )
 from app.schemas.chat import IntentContextResult
+from app.services.notification_builder import NotificationBuilder
 from app.services.price_comparator import PriceComparator
 from app.services.telegram_service import TelegramService
 from app.utils.prompts import (
     INSTR_ALERT_FAILED,
-    INSTR_BROAD_SEARCH_FALLBACK,
     INSTR_CHECKOUT_TELEGRAM,
-    INSTR_FALLBACK_CATEGORY,
     INSTR_NO_DUPLICATE_LINKS,
     INSTR_NOTHING_FOUND,
     INSTR_PRICE_CHECKING,
@@ -79,7 +83,7 @@ class ProductCheckoutIntentHandler:
             result = await self.price_comparator.compare(
                 product_name, is_checkout=is_checkout, category_id=category_id
             )
-        except httpx.RequestError as e:
+        except Exception as e:
             logger.exception(
                 "Price comparator failed during intent handling", extra={"error": str(e)}
             )
@@ -108,15 +112,10 @@ class ProductCheckoutIntentHandler:
             if result.needs_alert:
                 requires_lead = True
                 lead_form_type = "contact"
-                safe_product_name = (
-                    html.escape(str(result.product_name))
-                    if result.product_name
-                    else "Unknown Product"
-                )
 
                 if result.alert_reason in ["low_margin", "checkout_margin_issue"]:
-                    msg = ALERT_MARGIN_ISSUE.format(
-                        safe_product_name=safe_product_name,
+                    msg = NotificationBuilder.build_margin_alert(
+                        product_name=result.product_name,
                         woo_price=result.woo_price,
                         supplier_price=result.supplier_price_uah,
                         diff_woo=result.diff_woo_uah,
@@ -146,14 +145,12 @@ class ProductCheckoutIntentHandler:
                     if not alert_success:
                         system_instructions.append(INSTR_ALERT_FAILED)
                     else:
-                        system_instructions.append(
-                            "КРИТИЧНО: Ціна на товар змінилася і потребує уточнення. "
-                            "КАТЕГОРИЧНО ЗАБОРОНЕНО пропонувати оформлення замовлення або давати посилання на чекаут. "
-                            "Прямо зараз попроси клієнта залишити номер телефону тут або написати нашому менеджеру в Telegram/Viber для узгодження фінальної ціни."
-                        )
+                        system_instructions.append(INSTR_PRICE_CHANGED_ALERT)
                     product_facts.extend(attributes_facts)
                 else:
-                    msg = ALERT_SCRAPER_FAILED.format(safe_product_name=safe_product_name)
+                    msg = NotificationBuilder.build_scraper_failed_alert(
+                        product_name=result.product_name
+                    )
                     alert_success = await self.telegram_service.send_alert(
                         msg, alert_type="error", session_id=session_id
                     )
@@ -186,9 +183,20 @@ class ProductCheckoutIntentHandler:
                     if result.availability_status == "instock"
                     else STATUS_OUT_OF_STOCK
                 )
+
+                if (
+                    result.availability_status == "instock"
+                    and result.woo_price is not None
+                    and result.woo_price < 40000
+                ):
+                    system_instructions.append(INSTR_NO_PREPAYMENT)
+
                 product_facts.append(
-                    f"Data: Product '{result.product_name}', актуальна та підтверджена ціна {result.woo_price} UAH. Conditions: {status_text}.\n"
-                    f"CRITICAL: Якщо товар підтверджено, запропонуй оформити замовлення. If 'In stock' - 1-3 days. 'Under order' - 14-20 days. DO NOT PUT LINKS IN TEXT!"
+                    FACT_CHECKOUT_PRODUCT.format(
+                        product_name=result.product_name,
+                        woo_price=result.woo_price,
+                        status_text=status_text,
+                    )
                 )
                 product_facts.extend(attributes_facts)
 
@@ -219,10 +227,17 @@ class ProductCheckoutIntentHandler:
                     if result.availability_status == "instock"
                     else STATUS_OUT_OF_STOCK
                 )
+
+                if result.availability_status == "instock" and result.woo_price < 40000:
+                    system_instructions.append(INSTR_NO_PREPAYMENT)
+
                 # For a normal request, the price is always "Estimated"
                 product_facts.append(
-                    f"Data: Product '{result.product_name}', Ціна {result.woo_price} UAH. Conditions: {status_text}.\n"
-                    f"CRITICAL: If 'In stock' - 1-3 days. 'Under order' - 14-20 days. DO NOT PUT LINKS IN TEXT!"
+                    FACT_INFO_PRODUCT.format(
+                        product_name=result.product_name,
+                        woo_price=result.woo_price,
+                        status_text=status_text,
+                    )
                 )
                 product_facts.extend(attributes_facts)
             else:
@@ -232,6 +247,10 @@ class ProductCheckoutIntentHandler:
                 )
                 new_intent_type = INTENT_SEARCH
 
+        viewed_products = (
+            [result.product_name] if "result" in locals() and result and result.product_name else []
+        )
+
         return IntentContextResult(
             product_facts=product_facts,
             system_instructions=system_instructions,
@@ -239,6 +258,7 @@ class ProductCheckoutIntentHandler:
             requires_lead=requires_lead,
             lead_form_type=lead_form_type,
             new_intent_type=new_intent_type,
+            viewed_products=viewed_products,
         )
 
 
@@ -347,7 +367,7 @@ class SearchIntentHandler:
                 )
 
                 if product.attributes:
-                    top_attrs = list(product.attributes.items())[:5]
+                    top_attrs = list(product.attributes.items())[:15]
                     attr_str = "\n".join(f"    * {k}: {v}" for k, v in top_attrs)
                     search_facts.append(f"  Characteristics:\n{attr_str}")
 
@@ -358,14 +378,8 @@ class SearchIntentHandler:
             search_facts.append(INSTR_NO_DUPLICATE_LINKS)
             product_facts.append("\n".join(search_facts))
 
-            if is_fallback_category:
-                system_instructions.append(INSTR_FALLBACK_CATEGORY)
-            elif is_fallback_broad:
-                system_instructions.append(
-                    INSTR_BROAD_SEARCH_FALLBACK.format(
-                        broad_term=broad_term, strict_term=strict_term
-                    )
-                )
+            if is_fallback_category or is_fallback_broad:
+                system_instructions.append(INSTR_SEARCH_FALLBACK)
             else:
                 system_instructions.append(
                     INSTR_PRODUCT_FOUND.format(product_name=woo_products[0].name)
@@ -374,12 +388,15 @@ class SearchIntentHandler:
             requires_lead = True
             system_instructions.append(INSTR_NOTHING_FOUND)
 
+        viewed_products = [p.name for p in woo_products] if woo_products else []
+
         return IntentContextResult(
             product_facts=product_facts,
             system_instructions=system_instructions,
             extracted_links=extracted_links,
             requires_lead=requires_lead,
             lead_form_type=lead_form_type,
+            viewed_products=viewed_products,
         )
 
 
@@ -405,9 +422,7 @@ class OrderStatusIntentHandler:
             order_id_str = match.group(0)
 
         if not order_id_str or not order_id_str.isdigit():
-            system_instructions.append(
-                "Не вдалося визначити номер замовлення. Попроси клієнта вказати точний номер замовлення (тільки цифри)."
-            )
+            system_instructions.append(INSTR_ORDER_ID_MISSING)
             return IntentContextResult(
                 product_facts=product_facts,
                 system_instructions=system_instructions,
@@ -425,10 +440,39 @@ class OrderStatusIntentHandler:
             order_data = None
 
         if not order_data:
-            system_instructions.append(
-                f"Замовлення з номером {order_id} не знайдено. Перепроси та спитай, чи можливо клієнт помилився цифрою або номером."
-            )
+            system_instructions.append(INSTR_ORDER_NOT_FOUND.format(order_id=order_id))
         else:
+            extracted_phone = intent_data.get("phone", "")
+            extracted_phone_clean = re.sub(r"\D", "", str(extracted_phone))
+            billing_phone = order_data.get("billing", {}).get("phone", "")
+            billing_phone_clean = re.sub(r"\D", "", str(billing_phone))
+
+            if not extracted_phone_clean:
+                system_instructions.append(
+                    f"Скажіть користувачу: 'Для перевірки статусу замовлення #{order_id}, з метою безпеки, вкажіть номер телефону, на який було оформлено замовлення.'"
+                )
+                return IntentContextResult(
+                    product_facts=product_facts,
+                    system_instructions=system_instructions,
+                    extracted_links=[],
+                    requires_lead=False,
+                    lead_form_type=None,
+                    new_intent_type=None,
+                )
+
+            if not billing_phone_clean or extracted_phone_clean[-9:] != billing_phone_clean[-9:]:
+                system_instructions.append(
+                    f"Скажіть користувачу: 'Вказаний номер телефону не збігається з номером у замовленні #{order_id}. Доступ заборонено.'"
+                )
+                return IntentContextResult(
+                    product_facts=product_facts,
+                    system_instructions=system_instructions,
+                    extracted_links=[],
+                    requires_lead=False,
+                    lead_form_type=None,
+                    new_intent_type=None,
+                )
+
             status_map = {
                 "pending": "Очікує оплати",
                 "processing": "В обробці",
@@ -456,9 +500,7 @@ class OrderStatusIntentHandler:
                 fact += f" Товари: {items_str}."
 
             product_facts.append(fact)
-            system_instructions.append(
-                "Клієнт запитує про своє замовлення. Використовуй надані дані (статус, суму, товари, доставку), щоб ввічливо відповісти йому. Не вигадуй інформацію, якої немає."
-            )
+            system_instructions.append(INSTR_ORDER_STATUS)
 
         return IntentContextResult(
             product_facts=product_facts,

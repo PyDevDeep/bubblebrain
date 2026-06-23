@@ -93,7 +93,7 @@ def parse_product(raw_product: dict[str, Any] | None, max_desc_length: int = 400
         clean_data["attributes"] = attributes
 
         # 2. Cleaning and truncating HTML short description
-        html_desc = product_input.short_description
+        html_desc = str(raw_product.get("short_description", ""))
         if html_desc:
             soup = BeautifulSoup(html_desc, "html.parser")
 
