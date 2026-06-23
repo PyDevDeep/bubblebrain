@@ -26,7 +26,7 @@ def set_sqlite_pragma(dbapi_connection: sqlite3.Connection, connection_record: A
 
 @retry(
     stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=0.1, min=0.1, max=2.0),
+    wait=wait_exponential(multiplier=0.1, min=0.1, max=0.5),
     retry=retry_if_exception_type(OperationalError),
 )
 async def commit_with_retry(session: Any) -> None:
@@ -47,11 +47,12 @@ async def init_db():
     """Initializes the database and creates all tables."""
     # Import models here so that Base.metadata.create_all can see them,
     # while avoiding circular imports and E402 from Ruff.
-    from app.models.chat_memory import ChatMessage
+    from app.models.chat_memory import ChatMessage, SessionState
     from app.models.lead import Lead
 
     # Stub so that Pylance/Ruff don't complain about "unused import"
     _ = ChatMessage
+    _ = SessionState
     _ = Lead
 
     async with engine.begin() as conn:
