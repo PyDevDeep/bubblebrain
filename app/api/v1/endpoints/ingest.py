@@ -2,7 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
-from app.core.config import Settings, get_settings
+from app.api.dependencies import get_openai_service, get_vector_service
 from app.core.logging_config import get_logger
 from app.core.security import verify_api_key
 from app.middleware.rate_limiter import limiter
@@ -18,14 +18,6 @@ ingest_router = APIRouter()
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 
-def get_openai_service(settings: Settings = Depends(get_settings)) -> OpenAIService:
-    return OpenAIService(settings)
-
-
-def get_vector_service(settings: Settings = Depends(get_settings)) -> VectorService:
-    return VectorService(settings)
-
-
 @ingest_router.post("/document", response_model=IngestResponse)
 @limiter.limit("5/minute")  # type: ignore[reportUntypedFunctionDecorator, reportUnknownMemberType]
 async def upload_document(
@@ -35,6 +27,7 @@ async def upload_document(
     openai_service: OpenAIService = Depends(get_openai_service),
     vector_service: VectorService = Depends(get_vector_service),
 ) -> IngestResponse:
+    """Upload a document for ingestion into the RAG vector store."""
     filename = file.filename or "unknown"
     logger.info("Starting document ingestion", filename=filename)
 
@@ -72,7 +65,7 @@ async def upload_document(
         return IngestResponse(document_id=document_id, chunks_count=len(chunks), status="indexed")
 
     except Exception as e:
-        logger.error("Ingestion pipeline failed", error=str(e), document_id=document_id)
+        logger.exception("Ingestion pipeline failed", document_id=document_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to process document"
         ) from e
@@ -87,6 +80,7 @@ async def upload_text(
     openai_service: OpenAIService = Depends(get_openai_service),
     vector_service: VectorService = Depends(get_vector_service),
 ) -> IngestResponse:
+    """Ingest raw text into the RAG vector store."""
     logger.info("Starting text ingestion")
     document_id = generate_document_id("raw_text")
     chunks = chunk_text(payload.text)
@@ -113,7 +107,7 @@ async def upload_text(
         return IngestResponse(document_id=document_id, chunks_count=len(chunks), status="indexed")
 
     except Exception as e:
-        logger.error("Text ingestion failed", error=str(e), document_id=document_id)
+        logger.exception("Text ingestion failed", document_id=document_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to process text"
         ) from e

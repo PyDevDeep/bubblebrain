@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException, status
-from openai import AsyncOpenAI
-from pinecone import Pinecone  # type: ignore[reportMissingTypeStubs]
+import asyncio
 
-from app.core.config import get_settings
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from app.api.dependencies import get_openai_service, get_vector_service
 from app.core.logging_config import get_logger
+from app.services.openai_service import OpenAIService
+from app.services.vector_service import VectorService
 
 logger = get_logger(__name__)
 health_router = APIRouter()
@@ -16,21 +18,18 @@ async def health_check() -> dict[str, str]:
 
 
 @health_router.get("/ready", status_code=status.HTTP_200_OK)
-async def readiness_check() -> dict[str, str]:
+async def readiness_check(
+    openai_service: OpenAIService = Depends(get_openai_service),
+    vector_service: VectorService = Depends(get_vector_service),
+) -> dict[str, str]:
     """Check availability of dependencies: Pinecone and OpenAI (Readiness probe)."""
-    settings = get_settings()
     components_status = {"status": "ready", "pinecone": "ok", "openai": "ok"}
     errors: list[str] = []
 
     # Check OpenAI
     try:
-        openai_client = AsyncOpenAI(
-            api_key=settings.openai_api_key.get_secret_value(),
-            timeout=5.0,
-            max_retries=0,
-        )
         # Call model listing as lightweight check
-        await openai_client.models.list()
+        await openai_service.client.models.list()
     except Exception as e:
         logger.warning("OpenAI readiness check failed", error=str(e))
         components_status["openai"] = "failed"
@@ -38,9 +37,8 @@ async def readiness_check() -> dict[str, str]:
 
     # Check Pinecone
     try:
-        pinecone_client = Pinecone(api_key=settings.pinecone_api_key.get_secret_value())
         # Check service access (listing indices)
-        pinecone_client.list_indexes()
+        await asyncio.to_thread(vector_service.pc.list_indexes)
     except Exception as e:
         logger.warning("Pinecone readiness check failed", error=str(e))
         components_status["pinecone"] = "failed"
