@@ -1,6 +1,6 @@
 # 🧠 BubbleBrain
 
-> **AI-powered chatbot backend for e-commerce** — RAG pipeline, price comparison, lead generation, and Flowise widget integration in a single production-ready FastAPI service.
+> **AI-powered chatbot backend for e-commerce** — RAG pipeline, price comparison, lead generation, and widget integration in a single production-ready FastAPI service.
 
 [![Python](https://img.shields.io/badge/Python-3.13+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -20,7 +20,7 @@ Modern e-commerce stores lose customers due to slow or absent support. BubbleBra
 - Answers product questions **instantly** using your store's own data (RAG, no hallucinations)
 - **Compares prices** between your store and suppliers in real-time
 - **Captures leads** and routes hot prospects directly to Telegram
-- Embeds into any frontend via **Flowise Chat Widget** — no custom UI required
+- Embeds into any frontend via **Chat Widget** — no custom UI required
 - Syncs with **WooCommerce** via webhooks to stay up-to-date on orders and inventory
 
 ---
@@ -50,7 +50,7 @@ Modern e-commerce stores lose customers due to slow or absent support. BubbleBra
 | Web Framework | FastAPI + Uvicorn |
 | AI / LLM | OpenAI GPT-3.5/4, `text-embedding-3-small` |
 | Vector DB | Pinecone |
-| Chat Widget | Flowise Embed |
+| Chat Widget |
 | WooCommerce | REST API + Webhooks |
 | Scheduling | APScheduler |
 | HTTP Client | httpx |
