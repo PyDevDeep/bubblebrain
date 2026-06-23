@@ -74,10 +74,9 @@ class TelegramService:
                         f"Failed TG request to {endpoint} (Attempt {attempt + 1}/{retries})",
                         response=resp.text,
                     )
-            except Exception as e:
-                logger.error(
-                    f"Error in TG request to {endpoint} (Attempt {attempt + 1}/{retries})",
-                    error=str(e),
+            except Exception:
+                logger.exception(
+                    f"Error in TG request to {endpoint} (Attempt {attempt + 1}/{retries})"
                 )
 
             if attempt < retries - 1:
@@ -212,4 +211,13 @@ class TelegramService:
         files = {"document": (document_name, document_content.encode("utf-8"), "text/plain")}
 
         resp = await self._make_request("sendDocument", data=data, files=files, retries=3)
+        return resp is not None
+
+    async def answer_callback_query(self, callback_query_id: str, text: str = "") -> bool:
+        """Answer a Telegram callback query."""
+        if not self.api_base:
+            return False
+
+        payload: dict[str, Any] = {"callback_query_id": callback_query_id, "text": text}
+        resp = await self._make_request("answerCallbackQuery", payload=payload, retries=3)
         return resp is not None

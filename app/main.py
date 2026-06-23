@@ -1,4 +1,5 @@
 import contextlib
+import os
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
@@ -34,9 +35,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     setup_logging(settings.log_level)
 
     # --- ADDED FOR CACHE FIX ---
-    from app.services.cache_service import CacheService
+    from app.api.dependencies import get_cache_service
 
-    cache_service = CacheService(settings)
+    cache_service = get_cache_service()
     await cache_service.initialize()
 
     if settings.sentry_dsn:
@@ -49,9 +50,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     logger.info("Application started", env=settings.pinecone_environment)
 
-    from app.services.vector_service import VectorService
+    from app.api.dependencies import get_vector_service
 
-    vector_service = VectorService(settings)
+    vector_service = get_vector_service()
     await vector_service.initialize()
 
     # TECHNICAL DEBT:
@@ -66,7 +67,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     from app.services.statistics_service import gather_and_send_daily_report_job
 
-    jobstores = {"default": SQLAlchemyJobStore(url="sqlite:///bubblebrain.db")}
+    jobstores = {"default": SQLAlchemyJobStore(url="sqlite:///digitaldreams.db")}
     scheduler = AsyncIOScheduler(jobstores=jobstores)  # type: ignore
     scheduler.add_job(  # type: ignore[reportUnknownMemberType]
         export_categories_to_csv,
@@ -85,8 +86,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         replace_existing=True,
     )
 
-    scheduler.start()  # type: ignore
-    logger.info("APScheduler started: jobs scheduled")
+    if os.getenv("RUN_CRON", "false").lower() == "true":
+        scheduler.start()  # type: ignore
+        logger.info("APScheduler started: jobs scheduled")
+    else:
+        logger.info("APScheduler not started: RUN_CRON is not 'true'")
 
     yield
 
@@ -95,16 +99,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     scheduler.shutdown(wait=False)  # type: ignore
 
     # Close HTTP clients
-    from app.api.v1.endpoints.chat import get_cached_rag_engine
+    from app.api.dependencies import get_scraper_service
 
-    rag_engine = get_cached_rag_engine()
-    # Pylance does not know that RAGEngine has price_comparator with scraper_service due to lack of type hints
-    # but at runtime this is correct. We can just use # type: ignore to satisfy Pylance
-    await rag_engine.price_comparator.scraper_service.close()  # type: ignore
+    scraper_service = get_scraper_service()
+    await scraper_service.close()
 
-    from app.services.woo_service import close_woo_client
+    from app.api.dependencies import get_woo_service
 
-    await close_woo_client()
+    woo_service = get_woo_service()
+    await woo_service.close()
 
     if settings.sentry_dsn:
         sentry_sdk.flush()

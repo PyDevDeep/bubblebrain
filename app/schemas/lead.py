@@ -7,9 +7,9 @@ from app.core.constants import ERR_INVALID_PHONE_SHORT
 
 
 class ContactFormLead(BaseModel):
-    name: str = Field(..., max_length=50, pattern=r"^[A-Za-zА-Яа-яЄєІіЇїҐґ\s\-]+$")
+    name: str = Field(..., max_length=50, pattern=r"^[A-Za-zА-Яа-яЄєІіЇїҐґ\s\-']+$")
     surname: str | None = Field(
-        default=None, max_length=50, pattern=r"^[A-Za-zА-Яа-яЄєІіЇїҐґ\s\-]+$"
+        default=None, max_length=50, pattern=r"^[A-Za-zА-Яа-яЄєІіЇїҐґ\s\-']+$"
     )
     phone_number: str = Field(..., max_length=50, description="Phone")
     contact_method: Literal["telegram", "viber", "phone"]

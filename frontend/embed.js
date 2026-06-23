@@ -16,22 +16,23 @@
 
   if (!config.apiHost || !config.apiKey) {
     console.error(
-      "BubbleBrain Widget: Missing required configuration (apiHost, apiKey)",
+      "digitaldreams Widget: Missing required configuration (apiHost, apiKey)",
     );
     return;
   }
 
   // Додаємо скрипт з логікою, якщо він ще не завантажений
   if (typeof window.ChatWidget === "undefined") {
-    const scriptUrl = new URL(
-      "chat-widget.js",
-      currentScript ? currentScript.src : window.location.href,
-    ).href + "?v=2";
+    const scriptUrl =
+      new URL(
+        "chat-widget.js",
+        currentScript ? currentScript.src : window.location.href,
+      ).href + "?v=2";
     const script = document.createElement("script");
     script.src = scriptUrl;
     script.onload = () => {
       if (window.ChatWidgetInstance) {
-        console.warn("BubbleBrain Widget is already initialized.");
+        console.warn("digitaldreams Widget is already initialized.");
         return;
       }
       window.ChatWidgetInstance = new window.ChatWidget(config);
@@ -39,7 +40,7 @@
     document.head.appendChild(script);
   } else {
     if (window.ChatWidgetInstance) {
-      console.warn("BubbleBrain Widget is already initialized.");
+      console.warn("digitaldreams Widget is already initialized.");
       return;
     }
     window.ChatWidgetInstance = new window.ChatWidget(config);

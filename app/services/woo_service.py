@@ -11,16 +11,6 @@ from app.services.woo_smart_parser import parse_product
 
 logger = get_logger(__name__)
 
-_global_client: httpx.AsyncClient | None = None
-
-
-async def close_woo_client() -> None:
-    """Close the global WooCommerce HTTP client."""
-    global _global_client
-    if _global_client is not None:
-        await _global_client.aclose()
-        _global_client = None
-
 
 class WooService:
     def __init__(self, settings: Settings) -> None:
@@ -30,12 +20,11 @@ class WooService:
         self.base_url = f"{settings.woo_url.rstrip('/')}/wp-json/wc/v3/products"
         # Increased timeout due to slow WooCommerce search
         self.timeout = httpx.Timeout(15.0, connect=3.0)
+        self.client = httpx.AsyncClient()
 
-    def _get_client(self) -> httpx.AsyncClient:
-        global _global_client
-        if _global_client is None:
-            _global_client = httpx.AsyncClient()
-        return _global_client
+    async def close(self) -> None:
+        """Close the internal HTTP client."""
+        await self.client.aclose()
 
     def _parse_product_list(self, data: list[dict[str, Any]]) -> list[WooProduct]:
         """Parse a list of raw WooCommerce products into a list of WooProduct."""
@@ -59,7 +48,7 @@ class WooService:
 
     async def _fetch_and_parse_single(self, params: dict[str, str | int]) -> WooProduct | None:
         """Fetch and parse a single product from WooCommerce."""
-        client = self._get_client()
+        client = self.client
         try:
             resp = await client.get(
                 self.base_url, params=params, auth=(self.woo_ck, self.woo_cs), timeout=self.timeout
@@ -88,7 +77,7 @@ class WooService:
 
     async def _fetch_products_list(self, params: dict[str, Any], context: str) -> list[WooProduct]:
         """Helper to fetch and parse a list of products."""
-        client = self._get_client()
+        client = self.client
         products: list[WooProduct] = []
         try:
             resp = await client.get(
@@ -174,7 +163,7 @@ class WooService:
         tags: dict[str, int] = {}
 
         orders_url = self.base_url.replace("/products", "/orders")
-        client = self._get_client()
+        client = self.client
 
         try:
             resp = await client.get(
@@ -240,7 +229,7 @@ class WooService:
         from app.services.woo_smart_parser import parse_order
 
         order_url = f"{self.base_url.replace('/products', '/orders')}/{order_id}"
-        client = self._get_client()
+        client = self.client
 
         try:
             resp = await client.get(

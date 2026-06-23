@@ -15,7 +15,8 @@ def _parse_pdf(content: bytes) -> str:
     with pdfplumber.open(io.BytesIO(content)) as pdf:
         pages_text: list[str] = []
         for page in pdf.pages:
-            page_text = str(page.extract_text()) if page.extract_text() else ""
+            extracted = page.extract_text()
+            page_text = str(extracted) if extracted else ""
             if page_text:
                 pages_text.append(page_text)
         return "\n\n".join(pages_text)
@@ -27,13 +28,31 @@ def _parse_docx(content: bytes) -> str:
     return "\n\n".join(paragraphs)
 
 
+class FileSizeExceededError(ValueError):
+    pass
+
+
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
 async def extract_text(file: UploadFile) -> str:
     """
     Extract text from a file depending on its MIME type (PDF, TXT, DOCX, MD).
-    Loads the file into memory to avoid blocking the Event Loop.
+    Reads the file in chunks to prevent OOM.
     """
     content_type = file.content_type
-    content = await file.read()
+
+    content_array = bytearray()
+    chunk_size = 1024 * 1024
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        content_array.extend(chunk)
+        if len(content_array) > MAX_FILE_SIZE:
+            raise FileSizeExceededError("File size exceeds 5 MB limit")
+
+    content = bytes(content_array)
 
     if not content:
         raise ValueError("Empty document")

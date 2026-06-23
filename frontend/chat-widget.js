@@ -55,7 +55,7 @@ class ChatWidget {
     await new Promise((resolve) => {
       styleLink.onload = resolve;
       styleLink.onerror = () => {
-        console.error("BubbleBrain: Failed to load chat-widget.css");
+        console.error("digitaldreams: Failed to load chat-widget.css");
         resolve(); // Fallback, щоб не заблокувати повністю
       };
       this._shadow.appendChild(styleLink);
@@ -144,7 +144,7 @@ class ChatWidget {
 
   toggleWindow() {
     if (!this._elements) {
-      console.warn("BubbleBrain Widget is not fully initialized yet.");
+      console.warn("digitaldreams Widget is not fully initialized yet.");
       return;
     }
     this._isOpen = !this._isOpen;
@@ -322,7 +322,7 @@ class ChatWidget {
               }
             } catch (e) {
               console.error(
-                "BubbleBrain Stream: Failed to parse chunk",
+                "digitaldreams Stream: Failed to parse chunk",
                 e,
                 data,
               );
@@ -336,7 +336,7 @@ class ChatWidget {
         }
       }
     } catch (error) {
-      console.error("BubbleBrain Stream Error:", error); // ВІДСТЕЖЕННЯ РЕАЛЬНОГО ЗБОЮ
+      console.error("digitaldreams Stream Error:", error); // ВІДСТЕЖЕННЯ РЕАЛЬНОГО ЗБОЮ
       if (error.name === "AbortError") {
         throw new Error("Timeout запиту.");
       }

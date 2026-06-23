@@ -42,23 +42,23 @@ def test_create_application():
 
 @pytest.mark.asyncio
 @patch("app.core.db.init_db", new_callable=AsyncMock)
-@patch("app.services.cache_service.CacheService")
-@patch("app.services.vector_service.VectorService")
+@patch("app.api.dependencies.get_cache_service")
+@patch("app.api.dependencies.get_vector_service")
 @patch("app.main.AsyncIOScheduler")
 @patch("apscheduler.jobstores.sqlalchemy.SQLAlchemyJobStore")
-@patch("app.api.v1.endpoints.chat.get_cached_rag_engine")
-@patch("app.services.woo_service.close_woo_client", new_callable=AsyncMock)
+@patch("app.api.dependencies.get_scraper_service")
+@patch("app.api.dependencies.get_woo_service")
 @patch("app.main.sentry_sdk")
 @patch("app.main.get_settings")
 async def test_lifespan(
     mock_get_settings,
     mock_sentry,
-    mock_close_woo,
-    mock_get_rag,
+    mock_get_woo_service,
+    mock_get_scraper,
     mock_jobstore,
     mock_scheduler,
-    mock_vector_service,
-    mock_cache_service,
+    mock_get_vector_service,
+    mock_get_cache_service,
     mock_init_db,
 ):
     from app.main import lifespan
@@ -71,32 +71,35 @@ async def test_lifespan(
     mock_get_settings.return_value = mock_settings
 
     mock_cache_instance = AsyncMock()
-    mock_cache_service.return_value = mock_cache_instance
+    mock_get_cache_service.return_value = mock_cache_instance
 
     mock_vector_instance = AsyncMock()
-    mock_vector_service.return_value = mock_vector_instance
+    mock_get_vector_service.return_value = mock_vector_instance
 
     mock_sched_instance = MagicMock()
     mock_scheduler.return_value = mock_sched_instance
 
-    mock_rag = MagicMock()
-    mock_rag.price_comparator.scraper_service.close = AsyncMock()
-    mock_get_rag.return_value = mock_rag
+    mock_scraper = AsyncMock()
+    mock_get_scraper.return_value = mock_scraper
+
+    mock_woo_service = AsyncMock()
+    mock_get_woo_service.return_value = mock_woo_service
 
     app = FastAPI()
 
     # Act
-    async with lifespan(app):
-        # Assert startup
-        mock_init_db.assert_awaited_once()
-        mock_cache_instance.initialize.assert_awaited_once()
-        mock_sentry.init.assert_called_once()
-        mock_vector_instance.initialize.assert_awaited_once()
-        mock_sched_instance.add_job.assert_called()
-        mock_sched_instance.start.assert_called_once()
+    with patch.dict("os.environ", {"RUN_CRON": "true"}):
+        async with lifespan(app):
+            # Assert startup
+            mock_init_db.assert_awaited_once()
+            mock_cache_instance.initialize.assert_awaited_once()
+            mock_sentry.init.assert_called_once()
+            mock_vector_instance.initialize.assert_awaited_once()
+            mock_sched_instance.add_job.assert_called()
+            mock_sched_instance.start.assert_called_once()
 
     # Assert shutdown
     mock_sched_instance.shutdown.assert_called_once_with(wait=False)
-    mock_rag.price_comparator.scraper_service.close.assert_awaited_once()
-    mock_close_woo.assert_awaited_once()
+    mock_scraper.close.assert_awaited_once()
+    mock_woo_service.close.assert_awaited_once()
     mock_sentry.flush.assert_called_once()

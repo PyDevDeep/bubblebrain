@@ -16,7 +16,7 @@ from app.core.logging_config import get_logger
 logger = get_logger(__name__)
 
 # Path initialization is moved to the module level
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data"
+OUTPUT_DIR = Path(os.getenv("DATA_DIR", Path(__file__).resolve().parent.parent / "data"))
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_FILE = OUTPUT_DIR / "categories.csv"
 TEMP_FILE = OUTPUT_DIR / "categories_temp.csv"

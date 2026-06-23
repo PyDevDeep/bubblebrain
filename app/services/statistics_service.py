@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import httpx
 from sqlalchemy import func, select
@@ -83,13 +82,15 @@ async def gather_and_send_daily_report_job() -> None:
     woo_service = WooService(settings)
 
     # 1. Prometheus Metrics
-    prom_stats = await fetch_prometheus_data(settings)
+    prom_task = asyncio.create_task(fetch_prometheus_data(settings))
 
     # 2. SQLite (Unique users)
-    unique_users = await fetch_unique_users_24h()
+    users_task = asyncio.create_task(fetch_unique_users_24h())
 
     # 3. WooCommerce
-    woo_stats: dict[str, Any] = await woo_service.get_daily_orders_stats()
+    woo_task = asyncio.create_task(woo_service.get_daily_orders_stats())
+
+    prom_stats, unique_users, woo_stats = await asyncio.gather(prom_task, users_task, woo_task)
 
     # Message formatting
     date_str = datetime.now(UTC).strftime("%d.%m.%Y")
@@ -130,5 +131,8 @@ async def gather_and_send_daily_report_job() -> None:
     message = "\n".join(msg_lines)
 
     # Send to 'stat' topic
-    await telegram_service.send_alert(message, alert_type="stat")
-    logger.info("Daily statistics report sent.")
+    try:
+        await telegram_service.send_alert(message, alert_type="stat")
+        logger.info("Daily statistics report sent.")
+    finally:
+        await woo_service.close()

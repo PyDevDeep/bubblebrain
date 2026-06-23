@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr
     openai_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
+    model_pricing: dict[str, tuple[float, float]] = {
+        "gpt-4o": (5.0, 15.0),
+        "gpt-4o-mini": (0.150, 0.600),
+        "text-embedding-3-small": (0.02, 0.0),
+        "text-embedding-3-large": (0.13, 0.0),
+    }
 
     pinecone_api_key: SecretStr
     pinecone_environment: str

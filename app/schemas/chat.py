@@ -97,6 +97,7 @@ class IntentContextResult:
     requires_lead: bool
     lead_form_type: Literal["contact", "checkout"] | None = None
     new_intent_type: str | None = None
+    viewed_products: list[str] | None = None
 
 
 class IntentDetectionResult(BaseModel):

@@ -32,3 +32,21 @@ class WooOrder(BaseModel):
     payment_method_title: str = ""
     shipping_lines: list[WooOrderShipping] = []
     line_items: list[WooOrderLineItem] = []
+
+
+class WooOrderItem(BaseModel):
+    name: str
+    quantity: int
+    total: str
+    sku: str | None = None
+
+
+class WooOrderPayload(BaseModel):
+    order_id: int | str
+    session_id: str
+    total: str
+    currency: str
+    first_name: str
+    last_name: str
+    phone: str
+    items: list[WooOrderItem]

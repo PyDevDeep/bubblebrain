@@ -18,13 +18,7 @@ from app.core.metrics import (
 
 logger = get_logger(__name__)
 
-# Prompt and completion cost per 1M tokens in USD
-MODEL_PRICING: dict[str, tuple[float, float]] = {
-    "gpt-4o": (5.0, 15.0),
-    "gpt-4o-mini": (0.150, 0.600),
-    "text-embedding-3-small": (0.02, 0.0),
-    "text-embedding-3-large": (0.13, 0.0),
-}
+logger = get_logger(__name__)
 
 
 class OpenAIService:
@@ -37,10 +31,19 @@ class OpenAIService:
         self.embedding_model = settings.embedding_model
         self.openai_model = settings.openai_model
         self.max_tokens_response = settings.max_tokens_response
+        self.model_pricing = settings.model_pricing
 
     def _calculate_cost(self, model: str, prompt_tokens: int, completion_tokens: int) -> float:
-        prices = MODEL_PRICING.get(model, (0.0, 0.0))
+        prices = self.model_pricing.get(model, (0.0, 0.0))
         return (prompt_tokens * prices[0] / 1000000) + (completion_tokens * prices[1] / 1000000)
+
+    def _record_metrics(self, model: str, prompt_tokens: int, completion_tokens: int = 0) -> None:
+        llm_tokens_total.labels(model=model, token_type="prompt").inc(prompt_tokens)  # noqa: S106
+        if completion_tokens > 0:
+            llm_tokens_total.labels(model=model, token_type="completion").inc(completion_tokens)  # noqa: S106
+        cost = self._calculate_cost(model, prompt_tokens, completion_tokens)
+        if cost > 0:
+            llm_cost_usd_total.labels(model=model).inc(cost)
 
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -64,11 +67,7 @@ class OpenAIService:
             llm_requests_total.labels(model=self.embedding_model, status="success").inc()
 
             if response.usage:
-                tokens = response.usage.prompt_tokens
-                llm_tokens_total.labels(model=self.embedding_model, token_type="prompt").inc(tokens)  # noqa: S106
-                cost = self._calculate_cost(self.embedding_model, tokens, 0)
-                if cost > 0:
-                    llm_cost_usd_total.labels(model=self.embedding_model).inc(cost)
+                self._record_metrics(self.embedding_model, response.usage.prompt_tokens, 0)
 
             return response.data[0].embedding
         except RateLimitError:
@@ -104,11 +103,7 @@ class OpenAIService:
             llm_requests_total.labels(model=self.embedding_model, status="success").inc()
 
             if response.usage:
-                tokens = response.usage.prompt_tokens
-                llm_tokens_total.labels(model=self.embedding_model, token_type="prompt").inc(tokens)  # noqa: S106
-                cost = self._calculate_cost(self.embedding_model, tokens, 0)
-                if cost > 0:
-                    llm_cost_usd_total.labels(model=self.embedding_model).inc(cost)
+                self._record_metrics(self.embedding_model, response.usage.prompt_tokens, 0)
 
             sorted_data = sorted(response.data, key=lambda x: x.index)
             return [item.embedding for item in sorted_data]
@@ -168,16 +163,11 @@ class OpenAIService:
             llm_requests_total.labels(model=self.openai_model, status="success").inc()
 
             if response.usage:
-                p_tokens = response.usage.prompt_tokens
-                c_tokens = response.usage.completion_tokens
-                llm_tokens_total.labels(model=self.openai_model, token_type="prompt").inc(p_tokens)  # noqa: S106
-                llm_tokens_total.labels(model=self.openai_model, token_type="completion").inc(  # noqa: S106
-                    c_tokens
+                self._record_metrics(
+                    self.openai_model,
+                    response.usage.prompt_tokens,
+                    response.usage.completion_tokens,
                 )
-
-                cost = self._calculate_cost(self.openai_model, p_tokens, c_tokens)
-                if cost > 0:
-                    llm_cost_usd_total.labels(model=self.openai_model).inc(cost)
 
             content = response.choices[0].message.content
             return content if content else ""

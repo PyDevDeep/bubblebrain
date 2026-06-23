@@ -14,8 +14,14 @@ async def test_extract_text_txt():
     mock_file.content_type = "text/plain"
     mock_file.filename = "test.txt"
 
-    async def mock_read():
-        return content
+    read_called = False
+
+    async def mock_read(size=-1):
+        nonlocal read_called
+        if not read_called:
+            read_called = True
+            return content
+        return b""
 
     mock_file.read = mock_read
 
@@ -35,8 +41,14 @@ async def test_extract_text_pdf(mock_pdfplumber_open):
     mock_file.content_type = "application/pdf"
     mock_file.filename = "test.pdf"
 
-    async def mock_read():
-        return content
+    read_called = False
+
+    async def mock_read(size=-1):
+        nonlocal read_called
+        if not read_called:
+            read_called = True
+            return content
+        return b""
 
     mock_file.read = mock_read
 
@@ -67,8 +79,14 @@ async def test_extract_text_docx(mock_document_class):
     )
     mock_file.filename = "test.docx"
 
-    async def mock_read():
-        return content
+    read_called = False
+
+    async def mock_read(size=-1):
+        nonlocal read_called
+        if not read_called:
+            read_called = True
+            return content
+        return b""
 
     mock_file.read = mock_read
 
@@ -95,8 +113,14 @@ async def test_extract_text_unsupported_type():
     mock_file.content_type = "image/png"
     mock_file.filename = "image.png"
 
-    async def mock_read():
-        return b"fake image"
+    read_called = False
+
+    async def mock_read(size=-1):
+        nonlocal read_called
+        if not read_called:
+            read_called = True
+            return b"fake image"
+        return b""
 
     mock_file.read = mock_read
 
@@ -112,7 +136,7 @@ async def test_extract_text_empty_file():
     mock_file.content_type = "text/plain"
     mock_file.filename = "empty.txt"
 
-    async def mock_read():
+    async def mock_read(size=-1):
         return b""
 
     mock_file.read = mock_read

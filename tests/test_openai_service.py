@@ -193,6 +193,9 @@ async def test_stream_chat_completion_error(mock_async_openai_class, mock_settin
     import openai
     import tenacity
 
-    with pytest.raises((tenacity.RetryError, openai.OpenAIError)):
+    async def exhaust_stream():
         async for _ in service.stream_chat_completion("sys", "user", []):
             pass
+
+    with pytest.raises((tenacity.RetryError, openai.OpenAIError)):
+        await exhaust_stream()

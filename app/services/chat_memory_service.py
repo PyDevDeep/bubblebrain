@@ -1,3 +1,4 @@
+import json
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -5,7 +6,7 @@ from typing import Any
 from sqlalchemy import delete, select
 
 from app.core.db import AsyncSessionLocal, commit_with_retry
-from app.models.chat_memory import ChatMessage
+from app.models.chat_memory import ChatMessage, SessionState
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,46 @@ logger = logging.getLogger(__name__)
 class ChatMemoryService:
     def __init__(self, session_factory: Callable[..., Any] = AsyncSessionLocal) -> None:
         self.session_factory = session_factory
+
+    async def get_session_state(self, session_id: str) -> dict[str, Any]:
+        """Retrieves the current session state."""
+        async with self.session_factory() as session:
+            stmt = select(SessionState).where(SessionState.session_id == session_id)
+            result = await session.execute(stmt)
+            state = result.scalar_one_or_none()
+            if state:
+                return {
+                    "last_search_query": state.last_search_query,
+                    "last_products": json.loads(state.last_products) if state.last_products else [],
+                }
+            return {"last_search_query": None, "last_products": []}
+
+    async def update_session_state(
+        self,
+        session_id: str,
+        last_search_query: str | None = None,
+        last_products: list[str] | None = None,
+    ) -> None:
+        """Updates the current session state."""
+        async with self.session_factory() as session:
+            try:
+                stmt = select(SessionState).where(SessionState.session_id == session_id)
+                result = await session.execute(stmt)
+                state = result.scalar_one_or_none()
+
+                if not state:
+                    state = SessionState(session_id=session_id)
+                    session.add(state)
+
+                if last_search_query is not None:
+                    state.last_search_query = last_search_query  # type: ignore
+                if last_products is not None:
+                    state.last_products = json.dumps(last_products, ensure_ascii=False)  # type: ignore
+
+                await commit_with_retry(session)
+            except Exception as e:
+                logger.exception("Failed to update session state", extra={"error": str(e)})
+                await session.rollback()
 
     async def get_history(
         self, session_id: str, limit: int = 6, ignore_reset: bool = False

@@ -1,8 +1,9 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.api.dependencies import get_openai_service, get_vector_service
 from app.main import app
 
 
@@ -20,54 +21,60 @@ async def test_health_check(async_client):
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.health.AsyncOpenAI")
-@patch("app.api.v1.endpoints.health.Pinecone")
-async def test_readiness_check_success(mock_pinecone, mock_openai, async_client):
-    mock_openai_instance = AsyncMock()
-    mock_openai.return_value = mock_openai_instance
+async def test_readiness_check_success(async_client):
+    mock_openai_service = AsyncMock()
+    mock_vector_service = MagicMock()
 
-    mock_pinecone_instance = MagicMock()
-    mock_pinecone.return_value = mock_pinecone_instance
+    app.dependency_overrides[get_openai_service] = lambda: mock_openai_service
+    app.dependency_overrides[get_vector_service] = lambda: mock_vector_service
 
-    response = await async_client.get("/api/v1/ready")
+    try:
+        response = await async_client.get("/api/v1/ready")
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ready", "pinecone": "ok", "openai": "ok"}
-
-
-@pytest.mark.asyncio
-@patch("app.api.v1.endpoints.health.AsyncOpenAI")
-@patch("app.api.v1.endpoints.health.Pinecone")
-async def test_readiness_check_openai_fails(mock_pinecone, mock_openai, async_client):
-    mock_openai_instance = AsyncMock()
-    mock_openai_instance.models.list.side_effect = Exception("OpenAI error")
-    mock_openai.return_value = mock_openai_instance
-
-    mock_pinecone_instance = MagicMock()
-    mock_pinecone.return_value = mock_pinecone_instance
-
-    response = await async_client.get("/api/v1/ready")
-
-    assert response.status_code == 503
-    data = response.json()
-    assert data["detail"]["status"] == "error"
-    assert data["detail"]["openai"] == "failed"
+        assert response.status_code == 200
+        assert response.json() == {"status": "ready", "pinecone": "ok", "openai": "ok"}
+    finally:
+        app.dependency_overrides.clear()
 
 
 @pytest.mark.asyncio
-@patch("app.api.v1.endpoints.health.AsyncOpenAI")
-@patch("app.api.v1.endpoints.health.Pinecone")
-async def test_readiness_check_pinecone_fails(mock_pinecone, mock_openai, async_client):
-    mock_openai_instance = AsyncMock()
-    mock_openai.return_value = mock_openai_instance
+async def test_readiness_check_openai_fails(async_client):
+    mock_openai_service = AsyncMock()
+    # Explicitly set the mock to raise an exception when called
+    mock_list = AsyncMock(side_effect=Exception("OpenAI error"))
+    mock_openai_service.client.models.list = mock_list
+    mock_vector_service = MagicMock()
 
-    mock_pinecone_instance = MagicMock()
-    mock_pinecone_instance.list_indexes.side_effect = Exception("Pinecone error")
-    mock_pinecone.return_value = mock_pinecone_instance
+    app.dependency_overrides[get_openai_service] = lambda: mock_openai_service
+    app.dependency_overrides[get_vector_service] = lambda: mock_vector_service
 
-    response = await async_client.get("/api/v1/ready")
+    try:
+        response = await async_client.get("/api/v1/ready")
 
-    assert response.status_code == 503
-    data = response.json()
-    assert data["detail"]["status"] == "error"
-    assert data["detail"]["pinecone"] == "failed"
+        assert response.status_code == 503
+        data = response.json()
+        assert data["detail"]["status"] == "error"
+        assert data["detail"]["openai"] == "failed"
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_readiness_check_pinecone_fails(async_client):
+    mock_openai_service = AsyncMock()
+    mock_vector_service = MagicMock()
+    mock_list_indexes = MagicMock(side_effect=Exception("Pinecone error"))
+    mock_vector_service.pc.list_indexes = mock_list_indexes
+
+    app.dependency_overrides[get_openai_service] = lambda: mock_openai_service
+    app.dependency_overrides[get_vector_service] = lambda: mock_vector_service
+
+    try:
+        response = await async_client.get("/api/v1/ready")
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["detail"]["status"] == "error"
+        assert data["detail"]["pinecone"] == "failed"
+    finally:
+        app.dependency_overrides.clear()

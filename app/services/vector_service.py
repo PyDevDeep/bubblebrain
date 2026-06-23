@@ -25,11 +25,12 @@ class VectorService:
         self.dimension = settings.pinecone_dimension
         self.metric = settings.pinecone_metric
 
-        self.index: Any = self.pc.Index(self.index_name)  # type: ignore[reportUnknownMemberType]
+        self.index: Any = None
 
     async def initialize(self) -> None:
         """Initialize the vector service by ensuring the index exists."""
         await asyncio.to_thread(self.ensure_index_exists)
+        self.index = self.pc.Index(self.index_name)  # type: ignore[reportUnknownMemberType]
 
     def ensure_index_exists(self) -> None:
         """

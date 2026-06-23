@@ -4,9 +4,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from tenacity import RetryError
 
-from app.api.v1.endpoints.leads import send_telegram_notification
 from app.main import app
 from app.middleware.rate_limiter import limiter
 from app.schemas.lead import ContactFormLead
@@ -102,23 +100,6 @@ async def test_telegram_service_network_error() -> None:
         assert mock_post.call_count == 3
 
 
-# 3. Tenacity tests
-@pytest.mark.asyncio
-async def test_send_telegram_notification_retry_limit() -> None:
-    """Test that the Telegram notification stops retrying after reaching the limit."""
-    with patch(
-        "app.services.telegram_service.TelegramService.send_alert", new_callable=AsyncMock
-    ) as mock_send_alert:
-        # Mock telegram service to always raise ConnectError
-        mock_send_alert.side_effect = httpx.ConnectError("Network Error")
-
-        with pytest.raises(RetryError):
-            # This should retry exactly 3 times as configured
-            await send_telegram_notification(lead_id=1, message="Test retry", alert_type="lead")
-
-        assert mock_send_alert.call_count == 3
-
-
 # 4. API Endpoint tests
 client = TestClient(app)
 
@@ -140,23 +121,11 @@ def test_api_create_lead_honeypot() -> None:
     assert response.json() == {"status": "success", "message": "Lead received"}
 
 
-@patch("app.api.v1.endpoints.leads.AsyncSessionLocal")
 @patch("app.api.v1.endpoints.leads.BackgroundTasks.add_task")
-def test_api_create_lead_success(mock_add_task: MagicMock, mock_session_local: MagicMock) -> None:
+@patch("app.services.lead_service.LeadService.create_contact_lead", new_callable=AsyncMock)
+def test_api_create_lead_success(mock_create_lead: AsyncMock, mock_add_task: MagicMock) -> None:
     """Test successful creation of a lead via the API."""
-    # Set up the async context manager mock
-    mock_session = AsyncMock()
-
-    # session.add is a synchronous method in SQLAlchemy AsyncSession
-    mock_session.add = MagicMock()
-
-    import typing
-
-    async def mock_refresh(instance: typing.Any) -> None:
-        instance.id = 1
-
-    mock_session.refresh = AsyncMock(side_effect=mock_refresh)
-    mock_session_local.return_value.__aenter__.return_value = mock_session
+    mock_create_lead.return_value = (1, "Test message", "lead")
 
     response = client.post(
         "/api/v1/leads",
@@ -166,9 +135,8 @@ def test_api_create_lead_success(mock_add_task: MagicMock, mock_session_local: M
     assert response.status_code == 201
     assert response.json() == {"status": "success", "message": "Lead received"}
 
-    # Verify DB insertion
-    mock_session.add.assert_called_once()
-    mock_session.commit.assert_called_once()
+    # Verify DB insertion logic was triggered
+    mock_create_lead.assert_called_once()
 
     # Verify background task was queued
     mock_add_task.assert_called_once()
@@ -211,27 +179,31 @@ def test_api_create_lead_invalid_json() -> None:
     assert "Invalid JSON format or validation error" in response.json()["detail"]
 
 
-@patch("app.api.v1.endpoints.leads.AsyncSessionLocal")
-@patch("app.api.v1.endpoints.leads.send_telegram_notification", new_callable=AsyncMock)
+@patch("app.services.lead_service.AsyncSessionLocal")
+@patch("app.services.telegram_service.TelegramService.send_alert", new_callable=AsyncMock)
 @pytest.mark.asyncio
 async def test_process_lead_background_success(
     mock_send_tg: AsyncMock, mock_session_local: MagicMock
 ) -> None:
     """Test processing a lead in the background successfully."""
-    from app.api.v1.endpoints.leads import process_lead_background
     from app.models.lead import Lead
+    from app.services.chat_memory_service import ChatMemoryService
+    from app.services.lead_service import LeadService
 
     mock_session = AsyncMock()
     mock_lead = MagicMock(spec=Lead)
     mock_session.get.return_value = mock_lead
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
-    await process_lead_background(1, "Test Message")
+    tg_service = TelegramService(MagicMock())
+    chat_service = ChatMemoryService()
+    lead_service = LeadService(tg_service, chat_service)
+
+    await lead_service.process_lead_background(1, "Test Message")
 
     mock_send_tg.assert_called_once_with(
-        1,
         "Test Message",
-        "lead",
+        alert_type="lead",
         reply_markup={
             "inline_keyboard": [
                 [
@@ -247,31 +219,35 @@ async def test_process_lead_background_success(
     mock_session.commit.assert_called_once()
 
 
-@patch("app.api.v1.endpoints.leads.AsyncSessionLocal")
-@patch("app.api.v1.endpoints.leads.send_telegram_notification", new_callable=AsyncMock)
-@patch("app.api.v1.endpoints.leads.sentry_sdk.capture_message")
+@patch("app.services.lead_service.AsyncSessionLocal")
+@patch("app.services.telegram_service.TelegramService.send_alert", new_callable=AsyncMock)
+@patch("app.services.lead_service.sentry_sdk.capture_exception")
 @pytest.mark.asyncio
-async def test_process_lead_background_retry_error(
+async def test_process_lead_background_error(
     mock_sentry: MagicMock, mock_send_tg: AsyncMock, mock_session_local: MagicMock
 ) -> None:
-    """Test background lead processing handles RetryError and logs to Sentry."""
-    from tenacity import RetryError
-
-    from app.api.v1.endpoints.leads import process_lead_background
+    """Test background lead processing handles Exception and logs to Sentry."""
     from app.models.lead import Lead
+    from app.services.chat_memory_service import ChatMemoryService
+    from app.services.lead_service import LeadService
 
     mock_session = AsyncMock()
     mock_lead = MagicMock(spec=Lead)
     mock_session.get.return_value = mock_lead
     mock_session_local.return_value.__aenter__.return_value = mock_session
 
-    # Simulate a RetryError from send_telegram_notification
-    mock_send_tg.side_effect = RetryError(last_attempt=MagicMock())
+    tg_service = TelegramService(MagicMock())
+    chat_service = ChatMemoryService()
+    lead_service = LeadService(tg_service, chat_service)
 
-    await process_lead_background(1, "Test Message")
+    # Simulate an Exception from send_alert
+    error = Exception("Network Error")
+    mock_send_tg.side_effect = error
+
+    await lead_service.process_lead_background(1, "Test Message")
 
     # Verify Sentry was called
-    mock_sentry.assert_called_once_with("Telegram API failed for lead_id=1", level="error")
+    mock_sentry.assert_called_once_with(error)
 
     # Verify DB status updated to failed
     assert mock_lead.notification_status == "failed"
