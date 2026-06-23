@@ -209,11 +209,17 @@ async def test_order_status_intent_handler():
         "status": "processing",
         "total": "500",
         "currency": "UAH",
+        "payment_method_title": "Cash",
+        "billing": {"phone": "0501234567"},
     }
 
-    res = await handler.handle({"strict_query": "1234"}, [], [])
+    res = await handler.handle({"strict_query": "1234", "phone": "0501234567"}, [], [])
     assert res.requires_lead is False
     assert "Замовлення #1234" in res.product_facts[0]
+
+    # Test missing phone
+    res_no_phone = await handler.handle({"strict_query": "1234"}, [], [])
+    assert "вкажіть номер телефону" in res_no_phone.system_instructions[0]
 
     # Test invalid id
     res_no_id = await handler.handle({"strict_query": None}, [], [])

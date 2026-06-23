@@ -43,6 +43,7 @@ def mock_settings(tmp_path):
     settings.embedding_model = "text-embedding-ada-002"
     settings.openai_model = "gpt-4"
     settings.max_tokens_response = 1000
+    settings.model_pricing = {"gpt-4": (5.0, 15.0), "text-embedding-ada-002": (0.0, 0.0)}
 
     # Pinecone
     mock_secret_pinecone = Mock()
