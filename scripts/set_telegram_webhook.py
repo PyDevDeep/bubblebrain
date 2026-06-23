@@ -18,11 +18,17 @@ def main():
         sys.exit(1)
 
     webhook_url = f"{base_url.rstrip('/')}/api/v1/telegram/webhook"
+    secret_token = os.getenv("WEBHOOK_SECRET_TOKEN")
 
     api_url = f"https://api.telegram.org/bot{token}/setWebhook"
     print(f"Setting webhook to: {webhook_url}")
 
-    response = httpx.post(api_url, json={"url": webhook_url})
+    payload = {"url": webhook_url}
+    if secret_token:
+        payload["secret_token"] = secret_token
+        print("Using WEBHOOK_SECRET_TOKEN for added security.")
+
+    response = httpx.post(api_url, json=payload)
 
     print(f"Status Code: {response.status_code}")
     print(f"Response: {response.json()}")

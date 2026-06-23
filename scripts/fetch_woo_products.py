@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import re
@@ -14,8 +15,36 @@ sys.path.append(str(Path(__file__).parent.parent))
 from app.core.config import get_settings
 
 
+async def fetch_category_products(
+    client: httpx.AsyncClient,
+    url: str,
+    settings: Any,
+    cat_id: int,
+    per_page: int,
+    semaphore: asyncio.Semaphore,
+) -> list[dict[str, Any]]:
+    params: dict[str, str | int] = {
+        "consumer_key": str(settings.woo_ck),
+        "consumer_secret": str(settings.woo_cs),
+        "category": cat_id,
+        "per_page": per_page,
+    }
+    async with semaphore:
+        resp = await client.get(url, params=params)
+        if resp.status_code == 200:
+            result: list[dict[str, Any]] = resp.json()
+            return result
+        return []
+
+
 async def main():
     """Main entry point to fetch WooCommerce products and perform analysis."""
+    parser = argparse.ArgumentParser(description="Fetch WooCommerce products.")
+    parser.add_argument(
+        "--limit-categories", type=int, default=10, help="Number of categories to fetch"
+    )
+    parser.add_argument("--per-page", type=int, default=10, help="Number of products per category")
+    args = parser.parse_args()
     settings = get_settings()
     url = f"{settings.woo_url.rstrip('/')}/wp-json/wc/v3/products"
 
@@ -32,16 +61,14 @@ async def main():
         resp = await client.get(cat_url, params=params)
         categories: list[dict[str, Any]] = resp.json()
 
-        for cat in categories[:10]:  # take up to 10 categories
-            params = {
-                "consumer_key": settings.woo_ck,
-                "consumer_secret": settings.woo_cs,
-                "category": cat["id"],
-                "per_page": 10,  # 10 products per category
-            }
-            resp = await client.get(url, params=params)
-            if resp.status_code == 200:
-                products.extend(resp.json())
+        semaphore = asyncio.Semaphore(5)
+        tasks = [
+            fetch_category_products(client, url, settings, cat["id"], args.per_page, semaphore)
+            for cat in categories[: args.limit_categories]
+        ]
+        results = await asyncio.gather(*tasks)
+        for res in results:
+            products.extend(res)
 
         # Save to JSON
         json_path = Path(__file__).parent.parent / "woo_products_sample.json"

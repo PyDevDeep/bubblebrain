@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: WooCommerce Bot Sales Tracker
- * Description: Відстеження продажів з Telegram-бота (BubbleBrain). Зберігає UTM та session_id у куки і відправляє вебхук на бекенд.
+ * Description: Відстеження продажів з Telegram-бота (digitaldreams). Зберігає UTM та session_id у куки і відправляє вебхук на бекенд.
  * Version: 1.0.0
  * Author: PyDevDeep
  */
